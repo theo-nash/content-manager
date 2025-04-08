@@ -1,0 +1,65 @@
+{
+  "name": "@plugins/content-planner",
+  "version": "0.1.0",
+  "description": "Plugin to manage and plan content effectively.",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "@elizaos/source": "./src/index.ts",
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "discord.js": "14.16.3",
+    "agent-twitter-client": "^0.0.18",
+    "glob": "11.0.0"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "1.1.3",
+    "@elizaos/client-twitter": "0.1.9",
+    "tsup": "8.3.5",
+    "vitest": "1.6.1"
+  },
+  "scripts": {
+    "build": "tsup --format esm --dts",
+    "dev": "tsup --format esm --dts --watch",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "peerDependencies": {
+    "whatwg-url": "7.1.0"
+  },
+  "publishConfig": {
+    "access": "restricted"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "APPROVAL_CHANNEL": {
+        "type": "string",
+        "description": "Discord channel to use for plan approvals",
+        "default": "content-approvals"
+      },
+      "NOTIFICATION_CHANNEL": {
+        "type": "string",
+        "description": "Discord channel to use for notifications",
+        "default": "content-notifications"
+      },
+      "DEFAULT_MICRO_PLAN_TIMEFRAME": {
+        "type": "string",
+        "description": "Default timeframe for micro plans (daily, weekly)",
+        "default": "weekly"
+      }
+    }
+  }
+}
