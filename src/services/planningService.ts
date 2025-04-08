@@ -122,7 +122,9 @@ Format your response as a JSON object with the following structure:
     "endDate": "ISO date string",
     "milestones": [{ "date": "ISO date string", "description": "string" }]
   }
-}`;
+}
+  
+  Respond with the JSON object only.  No explanations or other text.`;
 
         // Generate the plan using LLM
         const llmResponse = await generateText({
@@ -288,7 +290,9 @@ Format your response as a JSON array of content pieces with this structure:
     "mediaRequirements": ["string"],
     "brief": "string"
   }
-]`;
+]
+  
+Respond with the JSON array only. No explanations or other text.`;
 
         // Generate content pieces using LLM
         const llmResponse = await generateText({

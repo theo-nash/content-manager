@@ -1,16 +1,7 @@
 import { UUID, Service, IAgentRuntime, elizaLogger, ServiceType } from "@elizaos/core";
 
-import {
-    ContentPiece,
-    Platform,
-    PlatformAdapter,
-    PlatformAdapterConfig,
-    PublishResult,
-    ContentStatus,
-    AdapterRegistration
-} from "../types";
 import { validateContentPlanningConfig, validateTwitterConfig } from "../environment";
-import { ContentDeliveryOptions, ContentDeliveryService } from "./contentDelivery";
+import { ContentDeliveryService } from "./contentDelivery";
 import { ContentApprovalService } from "./contentApproval";
 import { ContentAgentMemoryManager } from "../managers/contentMemory";
 import { ContentCreationService } from "./contentCreation";
@@ -23,14 +14,9 @@ import { NewsService } from "./newsService";
 
 export class ContentManagerService extends Service {
     capabilityDescription = "Provides a platform-specific adapter for content management";
-    private runtime: IAgentRuntime;
     private static serviceInstance: ContentManagerService | null = null;
-    private adapterRegistry: Map<Platform, AdapterRegistration> = new Map();
-    private defaultOptions: ContentDeliveryOptions = {
-        retry: true,
-        maxRetries: 3,
-        validateBeforePublish: true
-    };
+    private static serviceMap: Map<string, any> = new Map();
+    private runtime: IAgentRuntime;
 
     static get serviceType(): ServiceType {
         return "content-manager" as ServiceType;
@@ -92,5 +78,27 @@ export class ContentManagerService extends Service {
         // Initialize news service
         const newsService = new NewsService(runtime, contentMemory);
         await newsService.initialize(adapterProvider);
+
+        // Register services in service map
+        ContentManagerService.serviceMap.set("content-delivery", contentDeliveryService);
+        ContentManagerService.serviceMap.set("content-creation", contentCreationService);
+        ContentManagerService.serviceMap.set("content-approval", approvalService);
+        ContentManagerService.serviceMap.set("content-memory", contentMemory);
+        ContentManagerService.serviceMap.set("adapter-provider", adapterProvider);
+        ContentManagerService.serviceMap.set("decision-engine", decisionEngine);
+        ContentManagerService.serviceMap.set("evaluation-service", evaluationService);
+        ContentManagerService.serviceMap.set("planning-service", planningService);
+        ContentManagerService.serviceMap.set("news-service", newsService);
+        ContentManagerService.serviceMap.set("twitter-adapter", twitterAdapter);
+        ContentManagerService.serviceMap.set("content-manager", this);
+        ContentManagerService.serviceMap.set("adapter-provider", adapterProvider);
     }
+
+    async getMicroService<T>(serviceName: string): Promise<T | null> {
+        if (ContentManagerService.serviceMap.has(serviceName)) {
+            return ContentManagerService.serviceMap.get(serviceName) as T;
+        }
+        return null;
+    }
+
 }

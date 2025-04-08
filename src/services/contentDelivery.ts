@@ -74,7 +74,7 @@ export class ContentDeliveryService {
         }
 
         // Initialize content approval service
-        this.approvalService = new ContentApprovalService(this.runtime, []);
+        this.approvalService = approvalService;
 
         // Load any scheduled deliveries from cache
         await this.loadScheduledDeliveries();
@@ -153,6 +153,22 @@ export class ContentDeliveryService {
 
             // Get approval if required and not skipped
             if (this.approvalService && !mergedOptions.skipApproval) {
+                // If no provider for this platform, skip approval
+                const provider = this.approvalService.getProvider(contentPiece.platform);
+                if (!provider) {
+                    elizaLogger.warn(`[ContentDeliveryService] No approval provider for platform: ${contentPiece.platform}. Skipping approval.`);
+                    return await this.publishContent({
+                        id: stringToUuid(`${contentPiece.id}-approval`),
+                        content: formattedContent,
+                        platform: contentPiece.platform,
+                        requesterId: this.runtime.agentId,
+                        timestamp: new Date(),
+                        status: ApprovalStatus.APPROVED,
+                        comments: "Content approved automatically",
+                        callback: this.publishContent
+                    });
+                }
+
                 elizaLogger.debug(`[ContentDeliveryService] Sending content for approval: ${contentPiece.id}`);
 
                 await this.approvalService.sendForApproval(formattedContent, this.publishContent)

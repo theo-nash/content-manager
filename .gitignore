@@ -9,3 +9,5 @@ db.sqlite
 .idea
 .tee-cloud
 .turbo
+
+plans/
