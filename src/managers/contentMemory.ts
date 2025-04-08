@@ -34,13 +34,13 @@ export class ContentAgentMemoryManager implements IMemoryManager {
     runtime: IAgentRuntime;
     tableName: string;
 
-    constructor(runtime: IAgentRuntime, opts: { tableName?: string }) {
+    constructor(runtime: IAgentRuntime) {
         // Set default table name if not provided
-        this.tableName = opts.tableName || TABLE_NAME;
+        this.tableName = TABLE_NAME;
         this.runtime = runtime;
     }
 
-    async init(): Promise<void> {
+    async initialize(): Promise<void> {
         // Initialize the memory manager
         await this.ensureRoomsExist();
         await this.runtime.registerMemoryManager(this);

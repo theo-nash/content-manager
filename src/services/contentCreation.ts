@@ -1,10 +1,10 @@
 // src/services/content-service.ts
 import { IAgentRuntime, ModelClass, generateText, elizaLogger, ServiceType } from "@elizaos/core";
 import { ApprovalStatus, ContentPiece, ContentStatus, MasterPlan, MicroPlan } from "../types";
-import { ContentAgentMemoryManager } from "../managers/content-memory-manager";
+import { ContentAgentMemoryManager } from "../managers/contentMemory";
 import { TimestampStyles } from "discord.js";
 
-export class ContentService {
+export class ContentCreationService {
     constructor(private runtime: IAgentRuntime, private memoryManager: ContentAgentMemoryManager) { }
 
     async generateContent(contentPiece: ContentPiece): Promise<ContentPiece> {

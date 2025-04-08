@@ -10,7 +10,7 @@ import {
     DecisionContext,
     ApprovalStatus
 } from "../types";
-import { ContentAgentMemoryManager } from "../managers/content-memory-manager";
+import { ContentAgentMemoryManager } from "../managers/contentMemory";
 
 export class DecisionEngine {
     constructor(private runtime: IAgentRuntime, private memoryManager: ContentAgentMemoryManager) { }

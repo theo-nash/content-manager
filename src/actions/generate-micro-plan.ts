@@ -8,7 +8,7 @@ import {
     State,
     UUID
 } from "@elizaos/core";
-import { PlanningService } from "../services/planning-service";
+import { PlanningService } from "../services/planningService";
 import * as db from "../database";
 import { Timeframe } from "../types";
 

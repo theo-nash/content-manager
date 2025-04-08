@@ -7,7 +7,7 @@ import {
     ModelType,
     State
 } from "@elizaos/core";
-import { PlanningService } from "../services/planning-service";
+import { PlanningService } from "../services/planningService";
 
 export const createMasterPlanAction: Action = {
     name: "CREATE_MASTER_PLAN",

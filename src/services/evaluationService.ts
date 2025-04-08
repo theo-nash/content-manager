@@ -8,7 +8,7 @@ import {
     ContentPiece,
     ContentStatus
 } from "../types";
-import { ContentAgentMemoryManager } from "../managers/content-memory-manager";
+import { ContentAgentMemoryManager } from "../managers/contentMemory";
 
 export class EvaluationService {
     constructor(private runtime: IAgentRuntime, private memoryManager: ContentAgentMemoryManager) { }

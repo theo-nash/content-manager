@@ -1,4 +1,4 @@
-import { UUID, Service, IAgentRuntime, elizaLogger, ServiceType } from "@elizaos/core";
+import { UUID, Service, IAgentRuntime, elizaLogger, ServiceType, stringToUuid } from "@elizaos/core";
 import {
     ContentPiece,
     Platform,
@@ -6,8 +6,11 @@ import {
     PlatformAdapterConfig,
     PublishResult,
     ContentStatus,
-    AdapterRegistration
+    AdapterRegistration,
+    ApprovalStatus,
+    ApprovalRequest
 } from "../types";
+import { ContentApprovalService } from "./contentApproval";
 
 export interface ContentDeliveryOptions {
     retry?: boolean;
@@ -25,6 +28,7 @@ export interface ContentDeliveryResult extends PublishResult {
 
 export class ContentDeliveryService extends Service {
     capabilityDescription = "Provides a platform-specific adapter for content management";
+    private approvalService: ContentApprovalService | undefined;
 
     static get serviceType(): ServiceType {
         return "content-delivery" as ServiceType;
@@ -42,9 +46,11 @@ export class ContentDeliveryService extends Service {
         validateBeforePublish: true
     };
 
-    async initialize(runtime: IAgentRuntime): Promise<void> {
+    async initialize(runtime: IAgentRuntime, approvalService?: ContentApprovalService): Promise<void> {
         elizaLogger.debug("[ContentDeliveryService] Initializing ContentDeliveryService");
         this.runtime = runtime;
+
+        this.approvalService = approvalService;
 
         // Initialize platform clients
         for (const [platform, registration] of this.adapterRegistry.entries()) {
@@ -65,6 +71,9 @@ export class ContentDeliveryService extends Service {
                 elizaLogger.error(`[ContentDeliveryService] Connection to ${platform} is unhealthy`);
             }
         }
+
+        // Initialize content approval service
+        this.approvalService = new ContentApprovalService(this.runtime, []);
     }
 
     /**
@@ -130,7 +139,6 @@ export class ContentDeliveryService extends Service {
         }
 
         const adapter = registration.adapter;
-        let attempts = 0;
         let validationErrors: string[] = [];
 
         try {
@@ -153,6 +161,48 @@ export class ContentDeliveryService extends Service {
             // Format content for the platform
             const formattedContent = await adapter.formatContent(contentPiece);
 
+            // Get approval if required
+            if (this.approvalService) {
+                await this.approvalService.sendForApproval(formattedContent, this.publishContent)
+            } else {
+                const approvalResult: ApprovalRequest = {
+                    id: stringToUuid(contentPiece.id + "-approval"),
+                    content: formattedContent,
+                    platform: contentPiece.platform,
+                    requesterId: this.runtime.agentId,
+                    timestamp: new Date(),
+                    status: ApprovalStatus.APPROVED,
+                    comments: "Content approved automatically",
+                    callback: this.publishContent
+                }
+                await this.publishContent(approvalResult);
+            }
+        } catch (error) {
+            return null
+        }
+    }
+
+    async publishContent(approvalResult: ApprovalRequest): Promise<ContentDeliveryResult> {
+        const contentPiece = approvalResult.content;
+        let attempts = 0;
+
+        // Verify content is approved
+        if (approvalResult.status !== ApprovalStatus.APPROVED) {
+            elizaLogger.error(`[ContentDeliveryService] Content not approved for publishing: ${approvalResult.id}`);
+            return {
+                contentId: contentPiece.id,
+                platform: contentPiece.platform,
+                success: false,
+                timestamp: new Date(),
+                error: `Content not approved for publishing`,
+                attempts
+            };
+        }
+
+        try {
+            const registration = this.adapterRegistry.get(approvalResult.content.platform);
+            const adapter = registration.adapter;
+
             // Publish with retry logic if enabled
             let publishResult: PublishResult = { success: false, timestamp: new Date() };
             let lastError: any;
@@ -160,7 +210,7 @@ export class ContentDeliveryService extends Service {
             do {
                 attempts++;
                 try {
-                    publishResult = await adapter.publishContent(formattedContent);
+                    publishResult = await adapter.publishContent(contentPiece.formattedContent);
 
                     if (publishResult.success) {
                         // Update content status if published successfully
@@ -178,7 +228,7 @@ export class ContentDeliveryService extends Service {
                 } catch (error) {
                     lastError = error instanceof Error ? error.message : String(error);
                 }
-            } while (mergedOptions.retry && attempts < (mergedOptions.maxRetries || 1) && !publishResult?.success);
+            } while (this.defaultOptions.retry && attempts < (this.defaultOptions.maxRetries || 1) && !publishResult?.success);
 
             return {
                 contentId: contentPiece.id,
@@ -200,6 +250,7 @@ export class ContentDeliveryService extends Service {
             };
         }
     }
+
 
     /**
      * Posts content to multiple platforms

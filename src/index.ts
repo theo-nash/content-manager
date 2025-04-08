@@ -3,11 +3,11 @@ import { validateContentPlanningConfig } from "./environment";
 import { createMasterPlanAction } from "./actions/create-master-plan";
 import { generateMicroPlanAction } from "./actions/generate-micro-plan";
 import { contentStrategyProvider } from "./providers/content-strategy-provider";
-import { DecisionEngine } from "./services/decision-engine";
-import { PlanningService } from "./services/planning-service";
+import { DecisionEngine } from "./services/decisionEngine";
+import { PlanningService } from "./services/planningService";
 import { NewsService } from "./services/news-service";
 import { ContentService } from "./services/content-service";
-import { EvaluationService } from "./services/evaluation-service";
+import { EvaluationService } from "./services/evaluationService";
 import * as db from "./database";
 
 const contentPlannerPlugin: Plugin = {

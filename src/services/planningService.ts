@@ -14,7 +14,7 @@ import {
     Timeline,
     Milestone
 } from "../types";
-import { ContentAgentMemoryManager } from "../managers/content-memory-manager";
+import { ContentAgentMemoryManager } from "../managers/contentMemory";
 
 export class PlanningService {
     constructor(private runtime: IAgentRuntime, private memoryManager: ContentAgentMemoryManager) { }

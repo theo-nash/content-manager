@@ -78,7 +78,8 @@ export enum ApprovalStatus {
     DRAFT = "draft",
     PENDING = "pending",
     APPROVED = "approved",
-    REJECTED = "rejected"
+    REJECTED = "rejected",
+    FAILED = "failed"
 }
 
 export interface MicroPlan {
@@ -292,23 +293,19 @@ export interface AdapterRegistration {
 }
 
 export interface ApprovalRequest {
-    contentId: string;
-    contentText: string;
+    id: UUID;
+    content: ContentPiece;
     platform: string;
     requesterId: string;
     timestamp: Date;
-}
-
-export interface ApprovalResponse {
-    requestId: string;
-    approved: boolean;
-    approverId?: string;
-    timestamp: Date;
+    status: ApprovalStatus;
     comments?: string;
+    approverId?: string;
+    callback: Function;
 }
 
 export interface ApprovalRequestStatus {
     requestId: string;
-    status: "PENDING" | "APPROVED" | "REJECTED";
+    status: ApprovalStatus;
     timestamp: Date;
 }
