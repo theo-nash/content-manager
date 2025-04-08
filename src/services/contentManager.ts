@@ -21,6 +21,7 @@ import { PlanningService } from "./planningService";
 export class ContentManagerService extends Service {
     capabilityDescription = "Provides a platform-specific adapter for content management";
     private runtime: IAgentRuntime;
+    private static serviceInstance: ContentManagerService | null = null;
     private adapterRegistry: Map<Platform, AdapterRegistration> = new Map();
     private defaultOptions: ContentDeliveryOptions = {
         retry: true,
@@ -34,6 +35,14 @@ export class ContentManagerService extends Service {
 
     get serviceType(): ServiceType {
         return ContentManagerService.serviceType;
+    }
+
+    getInstance(): ContentManagerService {
+        if (ContentManagerService.serviceInstance) {
+            return ContentManagerService.serviceInstance;
+        }
+        ContentManagerService.serviceInstance = new ContentManagerService();
+        return ContentManagerService.serviceInstance;
     }
 
     async initialize(runtime: IAgentRuntime): Promise<void> {
@@ -54,7 +63,7 @@ export class ContentManagerService extends Service {
 
         // Initialize the content delivery service
         const contentDeliveryService = new ContentDeliveryService();
-        await contentDeliveryService.initialize(runtime, approvalService);
+        await contentDeliveryService.initialize(runtime, contentMemory, approvalService);
 
         //Initialize content creation service
         const contentCreationService = new ContentCreationService(runtime, contentMemory);

@@ -167,10 +167,28 @@ export class ContentAgentMemoryManager implements IMemoryManager {
 
     // Generic function to get an entity by ID
     async getEntityById<T>(id: UUID): Promise<T | null> {
+        // Check cache
+        const cacheKey = `content/${id}`;
+        const cachedMemory = await this.runtime.cacheManager.get<Memory>(cacheKey);
+
+        if (cachedMemory) {
+            return JSON.parse(cachedMemory.content.text || "{}") as T;
+        }
+
         try {
             const memory = await this.getMemoryById(id);
             if (!memory) return null;
 
+            // Cache the memory
+            await this.runtime.cacheManager.set(cacheKey, memory);
+
+            // Parse the content and return
+            if (!memory.content?.text) {
+                elizaLogger.error(`Memory content is empty for ID: ${id}`);
+                return null;
+            }
+
+            // Parse the content and return
             return JSON.parse(memory.content.text || "{}") as T;
         } catch (error) {
             elizaLogger.error(`Error getting entity:`, error);

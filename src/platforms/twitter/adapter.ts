@@ -122,7 +122,7 @@ export class TwitterAdapter implements PlatformAdapter {
         }
 
         const roomId = stringToUuid(
-            "twitter_generate_room-" + this.postClient.client.profile.username
+            `twitter_generate_room-${this.postClient.client.profile.username}`
         )
 
         if (this.postClient.approvalRequired) {
@@ -160,7 +160,7 @@ export class TwitterAdapter implements PlatformAdapter {
         const trends = await this.postClient.client.twitterClient.getTrends();
         if (trends) {
             return trends.map((trend: string) => ({
-                id: stringToUuid(trend + "-twitter"),
+                id: stringToUuid(`${trend}-twitter`),
                 name: trend,
                 platform: Platform.TWITTER,
                 discoveryDate: new Date(),

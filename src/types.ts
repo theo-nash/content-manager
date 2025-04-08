@@ -159,7 +159,7 @@ export interface ContentDecision {
     id: UUID;
     timestamp: Date;
     contentToCreate: ContentDecisionItem[];
-    context: DecisionContext;
+    evaluatedContext: DecisionTracking;
     decisionRationale: string;
 }
 
@@ -176,10 +176,26 @@ export interface ContentDecisionItem {
     relevantGoals: UUID[];
 }
 
-export interface DecisionContext {
+export interface DecisionTracking {
+    masterPlan: UUID;
     evaluatedNews: UUID[];
     evaluatedTrends: UUID[];
     evaluatedPlans: UUID[];
+    recentContent: UUID[];
+    upcomingEvents: string[];
+    temporalContext?: {
+        dayOfWeek: string;
+        timeOfDay: string;
+        upcomingEvents: string[];
+    };
+}
+
+export interface DecisionContext {
+    masterPlan: UUID;
+    evaluatedNews: UUID[];
+    evaluatedTrends: UUID[];
+    evaluatedPlans: UUID[];
+    recentContent: UUID[];
     temporalContext?: {
         dayOfWeek: string;
         timeOfDay: string;

@@ -1,5 +1,5 @@
 // src/services/decision-engine.ts
-import { UUID, IAgentRuntime, generateText, ModelClass, elizaLogger } from "@elizaos/core";
+import { UUID, IAgentRuntime, generateText, generateObject, ModelClass, elizaLogger } from "@elizaos/core";
 import {
     ContentDecision,
     ContentDecisionItem,
@@ -8,85 +8,221 @@ import {
     MasterPlan,
     MicroPlan,
     DecisionContext,
-    ApprovalStatus
+    ApprovalStatus,
+    ContentPiece,
+    DecisionTracking
 } from "../types";
 import { ContentAgentMemoryManager } from "../managers/contentMemory";
+import { z } from "zod";
 
 export class DecisionEngine {
     constructor(private runtime: IAgentRuntime, private memoryManager: ContentAgentMemoryManager) { }
 
+    /**
+     * Makes a content creation decision based on master plans, current context, and external factors
+     */
     async makeContentDecision(): Promise<ContentDecision> {
+        elizaLogger.log("Decision Engine: Making content decision");
+
         // 1. Gather all relevant context
         const masterPlans = await this.memoryManager.getMasterPlans();
         const activeMasterPlan = masterPlans.find(p => p.approvalStatus === ApprovalStatus.APPROVED) || null;
 
         const newsEvents = await this.memoryManager.getRecentNewsEvents();
         const trendingTopics = await this.memoryManager.getRecentTrendingTopics();
+        const upcomingEvents = this.getUpcomingEvents(activeMasterPlan);
 
         let microPlans: MicroPlan[] = [];
+        let recentContentPieces = [];
+
         if (activeMasterPlan) {
             microPlans = await this.memoryManager.getMicroPlansForMasterPlan(activeMasterPlan.id);
+            // Get most recent content for context
+            recentContentPieces = await this.memoryManager.getRecentContentPieces(5);
         }
 
         // 2. Generate decision using LLM
-        const decision = await this.generateDecision(activeMasterPlan, microPlans, newsEvents, trendingTopics);
+        const decision = await this.generateDecision(
+            activeMasterPlan,
+            microPlans,
+            newsEvents,
+            trendingTopics,
+            recentContentPieces
+        );
 
         // 3. Store decision for future reference
-        await this.storeDecision(decision);
+        await this.memoryManager.createContentDecision(decision);
+        elizaLogger.log(`Decision Engine: Created decision with ${decision.contentToCreate.length} content items`);
 
         return decision;
     }
 
+    /**
+     * Generate a content decision using LLM
+     */
     private async generateDecision(
         masterPlan: MasterPlan | null,
         microPlans: MicroPlan[],
         newsEvents: NewsEvent[],
-        trendingTopics: TrendingTopic[]
+        trendingTopics: TrendingTopic[],
+        recentContentPieces: any[],
+        upcomingEvents: string[] = []
     ): Promise<ContentDecision> {
-        // Create prompt for the LLM
-        const prompt = this.createDecisionPrompt(masterPlan, microPlans, newsEvents, trendingTopics);
+        const prompt = this.createDecisionPrompt(masterPlan, microPlans, newsEvents, trendingTopics, recentContentPieces, upcomingEvents);
 
-        // Generate decision using the LLM
-        const llmResponse = await generateText({
-            runtime: this.runtime,
-            context: prompt,
-            modelClass: ModelClass.LARGE
+        // Define schema for content decision validation
+        const contentDecisionItemSchema = z.object({
+            contentType: z.string(),
+            topic: z.string(),
+            platform: z.string(),
+            timing: z.string(),
+            priority: z.number().int().min(1).max(10),
+            isPlanned: z.boolean(),
+            reasonForSelection: z.string(),
+            relevantNews: z.array(z.string()).optional(),
+            relevantTrends: z.array(z.string()).optional(),
+            relevantGoals: z.array(z.string()).optional()
         });
 
-        // Parse the LLM response
-        return this.parseDecisionResponse(llmResponse, {
-            evaluatedNews: newsEvents.map(n => n.id),
-            evaluatedTrends: trendingTopics.map(t => t.id),
-            evaluatedPlans: microPlans.map(p => p.id),
+        const decisionSchema = z.object({
+            contentToCreate: z.array(contentDecisionItemSchema),
+            decisionRationale: z.string()
         });
+
+        try {
+            // Generate decision using LLM with schema validation
+            const llmResponse: any = await generateObject({
+                runtime: this.runtime,
+                context: prompt,
+                modelClass: ModelClass.LARGE,
+                schema: decisionSchema,
+                schemaName: "ContentDecision"
+            });
+
+            // Create final ContentDecision object
+            const decision: ContentDecision = {
+                id: crypto.randomUUID() as UUID,
+                timestamp: new Date(),
+                contentToCreate: llmResponse.contentToCreate.map(item => ({
+                    contentType: item.contentType,
+                    topic: item.topic,
+                    platform: item.platform,
+                    timing: item.timing,
+                    priority: item.priority,
+                    isPlanned: item.isPlanned,
+                    reasonForSelection: item.reasonForSelection,
+                    relevantNews: item.relevantNews || [],
+                    relevantTrends: item.relevantTrends || [],
+                    relevantGoals: item.relevantGoals || []
+                })),
+                evaluatedContext: this.createDecisionContextTracker(masterPlan, microPlans, newsEvents, trendingTopics, recentContentPieces),
+                decisionRationale: llmResponse.decisionRationale
+            };
+
+            return decision;
+        } catch (error) {
+            elizaLogger.error("Decision Engine: Error generating decision:", error);
+
+            // Return a fallback empty decision
+            return {
+                id: crypto.randomUUID() as UUID,
+                timestamp: new Date(),
+                contentToCreate: [],
+                evaluatedContext: this.createDecisionContextTracker(masterPlan, microPlans, newsEvents, trendingTopics, recentContentPieces),
+                decisionRationale: "Error generating content decision: " + (error instanceof Error ? error.message : String(error))
+            };
+        }
     }
 
-    private createDecisionPrompt(
+    /**
+     * Creates a decision context id tracking from all relevant inputs
+     */
+    private createDecisionContextTracker(
         masterPlan: MasterPlan | null,
         microPlans: MicroPlan[],
         newsEvents: NewsEvent[],
-        trendingTopics: TrendingTopic[]
-    ): string {
+        trendingTopics: TrendingTopic[],
+        recentContentPieces: any[],
+        upcomingEvents: string[] = []
+    ): DecisionTracking {
+        // Extract relevant IDs for context
+        return {
+            masterPlan: masterPlan ? masterPlan.id : null,
+            evaluatedNews: newsEvents.map(n => n.id),
+            evaluatedTrends: trendingTopics.map(t => t.id),
+            evaluatedPlans: microPlans.map(p => p.id),
+            recentContent: recentContentPieces.map(c => c.id),
+            upcomingEvents: upcomingEvents,
+            temporalContext: {
+                dayOfWeek: new Date().toLocaleDateString('en-US', { weekday: 'long' }),
+                timeOfDay: this.getTimeOfDay(),
+                upcomingEvents: this.getUpcomingEvents(masterPlan)
+            }
+        };
+    }
+
+    /**
+    * Creates a detailed prompt for the LLM to make content decisions
+    */
+    private createDecisionPrompt(masterPlan: MasterPlan | null,
+        microPlans: MicroPlan[],
+        newsEvents: NewsEvent[],
+        trendingTopics: TrendingTopic[],
+        recentContentPieces: any[],
+        upcomingEvents: string[]): string {
         return `You are making content creation decisions for a brand. Based on the following information, decide what content should be created next.
 
 ## Master Plan
-${masterPlan ? JSON.stringify(masterPlan, null, 2) : "No active master plan"}
+${masterPlan ? this.formatMasterPlan(masterPlan) : "No active master plan"}
 
-## Recent News Events
-${newsEvents.map(news => `- ${news.headline} (Relevance: ${news.relevanceScore})`).join('\n')}
+## Recent News Events (Last 24 Hours)
+${newsEvents.length > 0
+                ? newsEvents.map(news => this.formatNewsEvent(news)).join('\n')
+                : "No recent news events"
+            }
 
 ## Trending Topics
-${trendingTopics.map(topic => `- ${topic.name} (Volume: ${topic.volume}, Growth: ${topic.growthRate})`).join('\n')}
+${trendingTopics.length > 0
+                ? trendingTopics.map(topic => this.formatTrendingTopic(topic)).join('\n')
+                : "No trending topics"
+            }
 
 ## Scheduled Content
-${microPlans.flatMap(plan => plan.contentPieces).map(piece => `- ${piece.topic} (${piece.platform}, ${new Date(piece.scheduledDate).toISOString()})`).join('\n')}
+${recentContentPieces.length > 0
+                ? recentContentPieces.map(content => this.formatScheduledContent(content)).join('\n')
+                : "No scheduled content"
+            }
 
-Please provide:
-1. A list of content pieces to create
-2. For each piece, specify: content type, topic, platform, timing, priority (1-10), whether it was in the original plan
-3. A rationale for each content piece
-4. Any relevant news events or trending topics that influenced the decision
-5. Which master plan goals each piece addresses
+## Recent Published Content
+${recentContentPieces.length > 0
+                ? recentContentPieces.map(content => this.formatRecentContent(content)).join('\n')
+                : "No recent published content"
+            }
+
+## Current Temporal Context
+- Date: ${new Date().toLocaleDateString()}
+- Day of Week: ${new Date().toLocaleDateString('en-US', { weekday: 'long' })}
+- Time of Day: ${this.getTimeOfDay()}
+${upcomingEvents && upcomingEvents.length > 0
+                ? "- Upcoming Events: " + upcomingEvents.join(', ')
+                : "- No upcoming events"
+            }
+
+Please make content decisions based on:
+1. Strategic alignment with master plan goals
+2. Relevance to current news and trends
+3. Avoiding content repetition or overlap
+4. Optimal timing for audience engagement
+5. Appropriate platform selection
+
+Provide a list of content pieces to create with:
+- Content type and topic
+- Platform recommendation
+- Timing (immediate or scheduled date/time)
+- Priority level (1-10)
+- Whether it was in the original plan or opportunistic
+- Rationale for each recommendation
+- Relevant news, trends, or goals that influenced the decision
 
 Format your response as a JSON object with the following structure:
 {
@@ -108,57 +244,73 @@ Format your response as a JSON object with the following structure:
 }`;
     }
 
-    private parseDecisionResponse(
-        response: string,
-        context: DecisionContext
-    ): ContentDecision {
-        try {
-            // Attempt to parse JSON response
-            const parsedResponse = JSON.parse(response);
+    /**
+     * Gets the current time of day (morning, afternoon, evening)
+     */
+    private getTimeOfDay(): string {
+        const hour = new Date().getHours();
+        if (hour < 12) return "morning";
+        if (hour < 18) return "afternoon";
+        return "evening";
+    }
 
-            // Create a properly formatted ContentDecision
-            const decision: ContentDecision = {
-                id: crypto.randomUUID() as UUID,
-                timestamp: new Date(),
-                contentToCreate: Array.isArray(parsedResponse.contentToCreate)
-                    ? parsedResponse.contentToCreate.map(this.formatContentDecisionItem)
-                    : [],
-                context,
-                decisionRationale: parsedResponse.decisionRationale || "No rationale provided"
-            };
+    /**
+     * Extracts upcoming events from the master plan
+     */
+    private getUpcomingEvents(masterPlan: MasterPlan | null): string[] {
+        if (!masterPlan) return [];
 
-            return decision;
-        } catch (error) {
-            elizaLogger.error("Failed to parse decision response:", error);
+        const upcomingEvents = [];
+        const now = new Date();
 
-            // Fallback to a default empty decision
-            return {
-                id: crypto.randomUUID() as UUID,
-                timestamp: new Date(),
-                contentToCreate: [],
-                context,
-                decisionRationale: "Failed to generate a valid content decision"
-            };
+        // Look for upcoming milestones in the next 7 days
+        for (const milestone of masterPlan.timeline.milestones) {
+            const milestoneDate = new Date(milestone.date);
+            const daysDiff = Math.floor((milestoneDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+            if (daysDiff >= 0 && daysDiff <= 7) {
+                upcomingEvents.push(milestone.description);
+            }
         }
+
+        return upcomingEvents;
     }
 
-    private formatContentDecisionItem(item: any): ContentDecisionItem {
-        return {
-            contentType: item.contentType || "post",
-            topic: item.topic || "Untitled content",
-            platform: item.platform || "twitter",
-            timing: item.timing || "immediate",
-            priority: typeof item.priority === 'number' ? item.priority : 5,
-            isPlanned: Boolean(item.isPlanned),
-            reasonForSelection: item.reasonForSelection || "",
-            relevantNews: Array.isArray(item.relevantNews) ? item.relevantNews : [],
-            relevantTrends: Array.isArray(item.relevantTrends) ? item.relevantTrends : [],
-            relevantGoals: Array.isArray(item.relevantGoals) ? item.relevantGoals : []
-        };
+    /**
+     * Format master plan for prompt
+     */
+    private formatMasterPlan(masterPlan: MasterPlan): string {
+        return `Title: ${masterPlan.title}
+Goals: ${masterPlan.goals.map(g => `${g.description} (Priority: ${g.priority})`).join(', ')}
+Brand Voice: ${masterPlan.brandVoice.tone}
+Timeline: ${new Date(masterPlan.timeline.startDate).toLocaleDateString()} to ${new Date(masterPlan.timeline.endDate).toLocaleDateString()}`;
     }
 
-    private async storeDecision(decision: ContentDecision): Promise<void> {
-        // Store the decision
-        await this.memoryManager.createContentDecision(decision);
+    /**
+     * Format news event for prompt
+     */
+    private formatNewsEvent(news: NewsEvent): string {
+        return `- ${news.headline} (Source: ${news.source}, Relevance: ${news.relevanceScore.toFixed(2)})`;
+    }
+
+    /**
+     * Format trending topic for prompt
+     */
+    private formatTrendingTopic(topic: TrendingTopic): string {
+        return `- ${topic.name} (Platform: ${topic.platform}, Volume: ${topic.volume || 'Unknown'}, Growth: ${topic.growthRate || 'Unknown'})`;
+    }
+
+    /**
+     * Format scheduled content for prompt
+     */
+    private formatScheduledContent(content: any): string {
+        return `- ${content.topic} (${content.platform}, ${new Date(content.scheduledDate).toLocaleDateString()})`;
+    }
+
+    /**
+     * Format recent content for prompt
+     */
+    private formatRecentContent(content: any): string {
+        return `- ${content.topic} (${content.platform}, ${new Date(content.created).toLocaleDateString()})`;
     }
 }

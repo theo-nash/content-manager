@@ -4,10 +4,17 @@ import { ApprovalStatus, ContentPiece, ContentStatus, MasterPlan, MicroPlan } fr
 import { ContentAgentMemoryManager } from "../managers/contentMemory";
 import { TimestampStyles } from "discord.js";
 
+/**
+ * Service responsible for generating content based on content pieces
+ * from micro plans. It uses LLMs to create platform-specific content
+ * following brand guidelines and strategic objectives.
+ */
 export class ContentCreationService {
     constructor(private runtime: IAgentRuntime, private memoryManager: ContentAgentMemoryManager) { }
 
     async generateContent(contentPiece: ContentPiece): Promise<ContentPiece> {
+        elizaLogger.log(`[ContentCreationService] Generating content for piece: ${contentPiece.id}`);
+
         // Fetch additional context
         const masterPlans = await this.memoryManager.getMasterPlans();
         const activeMasterPlan = masterPlans.find(plan => plan.approvalStatus === ApprovalStatus.APPROVED);
@@ -17,9 +24,6 @@ export class ContentCreationService {
 
         // Update content piece status
         contentPiece.status = ContentStatus.READY;
-
-        // Store updated content piece
-        await this.memoryManager.createContentPiece(contentPiece);
 
         return contentPiece;
     }

@@ -65,7 +65,7 @@ export class ContentApprovalService {
         if (!provider) {
             elizaLogger.error(`[ContentApprovalService] No approval provider found for platform ${content.platform}`);
             return {
-                id: stringToUuid(content.id + "-approval"),
+                id: stringToUuid(`${content.id}-approval`),
                 content: content,
                 platform: content.platform,
                 requesterId: this.runtime.agentId,
@@ -90,7 +90,7 @@ export class ContentApprovalService {
         }
 
         const request: ApprovalRequest = {
-            id: stringToUuid(content.id + "-approval"),
+            id: stringToUuid(`${content.id}-approval`),
             content: content,
             platform: providerName,
             requesterId: this.runtime.agentId,
