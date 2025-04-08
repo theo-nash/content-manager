@@ -47,7 +47,8 @@ export class DecisionEngine {
             microPlans,
             newsEvents,
             trendingTopics,
-            recentContentPieces
+            recentContentPieces,
+            upcomingEvents
         );
 
         // 3. Store decision for future reference

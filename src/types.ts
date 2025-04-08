@@ -71,7 +71,8 @@ export interface Milestone {
 
 export enum Platform {
     TWITTER = "twitter",
-    DISCORD = "discord"
+    DISCORD = "discord",
+    MEDIUM = "medium"
 }
 
 export enum ApprovalStatus {
