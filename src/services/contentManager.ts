@@ -17,6 +17,7 @@ import { ContentCreationService } from "./contentCreation";
 import { DecisionEngine } from "./decisionEngine";
 import { EvaluationService } from "./evaluationService";
 import { PlanningService } from "./planningService";
+import { TwitterAdapter } from "../platforms/twitter/adapter";
 
 export class ContentManagerService extends Service {
     capabilityDescription = "Provides a platform-specific adapter for content management";
@@ -49,6 +50,10 @@ export class ContentManagerService extends Service {
         elizaLogger.debug("[ContentManagerService] Initializing ContentManagerService");
         this.runtime = runtime;
 
+        // Initialize adapters
+        const twitterAdapter = new TwitterAdapter();
+        await twitterAdapter.initialize(runtime);
+
         // Initialize configuration
         const TwitterConfig = await validateTwitterConfig(runtime);
         const planningConfig = await validateContentPlanningConfig(runtime);
@@ -67,6 +72,7 @@ export class ContentManagerService extends Service {
 
         //Initialize content creation service
         const contentCreationService = new ContentCreationService(runtime, contentMemory);
+        await contentCreationService.initialize([twitterAdapter]);
 
         // Initialize decision engine
         const decisionEngine = new DecisionEngine(runtime, contentMemory);

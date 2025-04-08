@@ -264,7 +264,7 @@ export interface ContentValidationResult {
 
 export interface PlatformAdapter {
     platformId: string;
-    platformName: string;
+    platform: Platform;
     capabilities: string[];
 
     // Initialization
@@ -292,6 +292,9 @@ export interface PlatformAdapter {
 
     // Status
     checkConnection(): Promise<boolean>;
+
+    // Content generation guidelines
+    getFormattingInstructions?(): Promise<string>;
 }
 
 export interface AudienceInsight {

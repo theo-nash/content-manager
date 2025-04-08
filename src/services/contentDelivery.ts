@@ -58,22 +58,16 @@ export class ContentDeliveryService {
         skipApproval: false,
     };
 
-    async initialize(runtime: IAgentRuntime, memoryManager: ContentAgentMemoryManager, approvalService?: ContentApprovalService): Promise<void> {
+    async initialize(runtime: IAgentRuntime, memoryManager: ContentAgentMemoryManager, approvalService?: ContentApprovalService, adapters?: PlatformAdapter[]): Promise<void> {
         elizaLogger.debug("[ContentDeliveryService] Initializing ContentDeliveryService");
         this.runtime = runtime;
         this.memoryManager = memoryManager;
 
-        this.approvalService = approvalService;
-
-        // Initialize platform clients
-        for (const [platform, registration] of this.adapterRegistry.entries()) {
-            try {
-                await registration.adapter.initialize(this.runtime);
-                elizaLogger.debug(`[ContentDeliveryService] Adapter for ${platform} initialized`);
-            } catch (error) {
-                elizaLogger.error(`[ContentDeliveryService] Failed to initialize adapter for ${platform}: ${error}`);
-            }
+        for (const adapter of adapters || []) {
+            await this.registerAdapter(adapter);
         }
+
+        this.approvalService = approvalService;
 
         // Check platform connections
         const statuses = await this.checkPlatformConnections();
@@ -98,16 +92,16 @@ export class ContentDeliveryService {
     /**
      * Register a platform adapter
      */
-    registerAdapter(platform: Platform, adapter: PlatformAdapter, config?: PlatformAdapterConfig): void {
-        elizaLogger.debug(`[ContentDeliveryService] Registering adapter for platform: ${platform}`);
+    registerAdapter(adapter: PlatformAdapter, config?: PlatformAdapterConfig): void {
+        elizaLogger.debug(`[ContentDeliveryService] Registering adapter for platform: ${adapter.platform}`);
 
         if (config) {
             adapter.configure(config);
         }
 
-        this.adapterRegistry.set(platform, {
+        this.adapterRegistry.set(adapter.platform, {
             adapter,
-            platform,
+            platform: adapter.platform,
             enabled: true
         });
     }

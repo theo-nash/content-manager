@@ -9,7 +9,7 @@ import fs from "fs";
 
 export class TwitterAdapter implements PlatformAdapter {
     platformId = "twitter";
-    platformName = "Twitter";
+    platform = Platform.TWITTER;
     capabilities = ["formatContent", "publishContent", "getPerformanceMetrics"];
 
     private postClient: TwitterPostClient | undefined;
@@ -185,6 +185,11 @@ export class TwitterAdapter implements PlatformAdapter {
         }
 
         return loggedIn;
+    }
+
+    async getFormattingInstructions(): Promise<string> {
+        // Implement Twitter-specific formatting instructions retrieval logic
+        return "Twitter formatting instructions";
     }
 }
 
