@@ -2,16 +2,14 @@ import { UUID, IAgentRuntime, elizaLogger, ServiceType, stringToUuid } from "@el
 import {
     ContentPiece,
     Platform,
-    PlatformAdapter,
-    PlatformAdapterConfig,
     PublishResult,
     ContentStatus,
-    AdapterRegistration,
     ApprovalStatus,
     ApprovalRequest
 } from "../types";
 import { ContentApprovalService } from "./contentApproval";
 import { ContentAgentMemoryManager } from "../managers/contentMemory";
+import { AdapterProvider } from "./adapterService";
 
 export interface ContentDeliveryOptions {
     retry?: boolean;
@@ -40,8 +38,8 @@ export class ContentDeliveryService {
     private approvalService: ContentApprovalService | undefined;
     private scheduledDeliveries: Map<string, NodeJS.Timeout> = new Map();
     private runtime: IAgentRuntime;
-    private adapterRegistry: Map<Platform, AdapterRegistration> = new Map();
     private memoryManager: ContentAgentMemoryManager;
+    private adapterProvider: AdapterProvider;
 
     static get serviceType(): ServiceType {
         return "content-delivery" as ServiceType;
@@ -58,16 +56,12 @@ export class ContentDeliveryService {
         skipApproval: false,
     };
 
-    async initialize(runtime: IAgentRuntime, memoryManager: ContentAgentMemoryManager, approvalService?: ContentApprovalService, adapters?: PlatformAdapter[]): Promise<void> {
+    async initialize(runtime: IAgentRuntime, memoryManager: ContentAgentMemoryManager, approvalService?: ContentApprovalService, adapterProvider?: AdapterProvider): Promise<void> {
         elizaLogger.debug("[ContentDeliveryService] Initializing ContentDeliveryService");
         this.runtime = runtime;
         this.memoryManager = memoryManager;
-
-        for (const adapter of adapters || []) {
-            await this.registerAdapter(adapter);
-        }
-
         this.approvalService = approvalService;
+        this.adapterProvider = adapterProvider;
 
         // Check platform connections
         const statuses = await this.checkPlatformConnections();
@@ -87,50 +81,6 @@ export class ContentDeliveryService {
 
         // Start the delivery monitor
         this.startDeliveryMonitor();
-    }
-
-    /**
-     * Register a platform adapter
-     */
-    registerAdapter(adapter: PlatformAdapter, config?: PlatformAdapterConfig): void {
-        elizaLogger.debug(`[ContentDeliveryService] Registering adapter for platform: ${adapter.platform}`);
-
-        if (config) {
-            adapter.configure(config);
-        }
-
-        this.adapterRegistry.set(adapter.platform, {
-            adapter,
-            platform: adapter.platform,
-            enabled: true
-        });
-    }
-
-    /**
-     * Unregister a platform adapter
-     */
-    unregisterAdapter(platform: Platform): boolean {
-        return this.adapterRegistry.delete(platform);
-    }
-
-    /**
-     * Enable or disable a specific adapter
-     */
-    setAdapterEnabled(platform: Platform, enabled: boolean): boolean {
-        const registration = this.adapterRegistry.get(platform);
-        if (registration) {
-            registration.enabled = enabled;
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * Get registered adapter for a specific platform
-     */
-    getAdapter(platform: Platform): PlatformAdapter | undefined {
-        const registration = this.adapterRegistry.get(platform);
-        return registration?.enabled ? registration.adapter : undefined;
     }
 
     /**
@@ -155,11 +105,11 @@ export class ContentDeliveryService {
         }
 
         const mergedOptions = { ...this.defaultOptions, ...options };
-        const registration = this.adapterRegistry.get(contentPiece.platform);
+        const adapter = this.adapterProvider.getAdapter(contentPiece.platform);
 
         elizaLogger.debug(`[ContentDeliveryService] Posting content: ${contentPiece.id} to ${contentPiece.platform}`);
 
-        if (!registration || !registration.enabled) {
+        if (adapter) {
             elizaLogger.error(`[ContentDeliveryService] No enabled adapter for platform: ${contentPiece.platform}`);
 
             return {
@@ -171,7 +121,6 @@ export class ContentDeliveryService {
             };
         }
 
-        const adapter = registration.adapter;
         let validationErrors: string[] = [];
 
         try {
@@ -256,12 +205,10 @@ export class ContentDeliveryService {
         }
 
         try {
-            const registration = this.adapterRegistry.get(approvalResult.content.platform);
-            if (!registration || !registration.enabled) {
+            const adapter = this.adapterProvider.getAdapter(approvalResult.content.platform);
+            if (adapter) {
                 throw new Error(`No enabled adapter for platform: ${contentPiece.platform}`);
             }
-
-            const adapter = registration.adapter;
 
             // Publish with retry logic if enabled
             let publishResult: PublishResult = { success: false, timestamp: new Date() };
@@ -518,21 +465,6 @@ export class ContentDeliveryService {
      * Check health status for all registered platforms
      */
     async checkPlatformConnections(): Promise<Record<Platform, boolean>> {
-        elizaLogger.debug("[ContentDeliveryService] Checking platform connections");
-        const statuses: Record<Platform, boolean> = {} as Record<Platform, boolean>;
-
-        for (const [platform, registration] of this.adapterRegistry.entries()) {
-            if (registration.enabled) {
-                try {
-                    statuses[platform] = await registration.adapter.checkConnection();
-                } catch {
-                    statuses[platform] = false;
-                }
-            } else {
-                statuses[platform] = false;
-            }
-        }
-
-        return statuses;
+        return this.adapterProvider.checkPlatformConnections();
     }
 }

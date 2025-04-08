@@ -3,6 +3,7 @@ import { IAgentRuntime, ModelClass, generateText, elizaLogger, ServiceType } fro
 import { AdapterRegistration, ApprovalStatus, ContentPiece, ContentStatus, MasterPlan, MicroPlan, Platform, PlatformAdapter } from "../types";
 import { ContentAgentMemoryManager } from "../managers/contentMemory";
 import { TimestampStyles } from "discord.js";
+import { AdapterProvider } from "./adapterService";
 
 /**
  * Service responsible for generating content based on content pieces
@@ -10,20 +11,14 @@ import { TimestampStyles } from "discord.js";
  * following brand guidelines and strategic objectives.
  */
 export class ContentCreationService {
-    private adapterRegistry: Map<Platform, AdapterRegistration> = new Map();
+    private adapterProvider: AdapterProvider;
 
     constructor(private runtime: IAgentRuntime, private memoryManager: ContentAgentMemoryManager) { }
 
-    async initialize(adapters?: PlatformAdapter[]): Promise<void> {
+    async initialize(adapterProvider?: AdapterProvider): Promise<void> {
         elizaLogger.debug("[ContentCreationService] Initializing ContentCreationService");
 
-        for (const adapter of adapters || []) {
-            this.adapterRegistry.set(adapter.platform, {
-                adapter,
-                platform: adapter.platform,
-                enabled: true
-            });
-        }
+        this.adapterProvider = adapterProvider;
     }
 
     async generateContent(contentPiece: ContentPiece): Promise<ContentPiece> {
@@ -34,8 +29,8 @@ export class ContentCreationService {
         const activeMasterPlan = masterPlans.find(plan => plan.approvalStatus === ApprovalStatus.APPROVED);
 
         // Get any platform-specific formatting instructions
-        const registration = this.adapterRegistry.get(contentPiece.platform);
-        const formattingInstructions = registration ? await registration.adapter.getFormattingInstructions() : '';
+        const adapter = this.adapterProvider.getAdapter(contentPiece.platform);
+        const formattingInstructions = adapter ? await adapter.getFormattingInstructions() : '';
 
         // Generate content using LLM
         contentPiece.generatedContent = await this.generateContentWithLLM(contentPiece, activeMasterPlan, formattingInstructions);

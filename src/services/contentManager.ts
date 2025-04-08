@@ -18,6 +18,8 @@ import { DecisionEngine } from "./decisionEngine";
 import { EvaluationService } from "./evaluationService";
 import { PlanningService } from "./planningService";
 import { TwitterAdapter } from "../platforms/twitter/adapter";
+import { AdapterProvider } from "./adapterService";
+import { NewsService } from "./newsService";
 
 export class ContentManagerService extends Service {
     capabilityDescription = "Provides a platform-specific adapter for content management";
@@ -58,6 +60,10 @@ export class ContentManagerService extends Service {
         const TwitterConfig = await validateTwitterConfig(runtime);
         const planningConfig = await validateContentPlanningConfig(runtime);
 
+        // Initialize adapter provider
+        const adapterProvider = new AdapterProvider();
+        adapterProvider.registerAdapter(twitterAdapter, TwitterConfig);
+
         // Initialize memory manager
         const contentMemory = new ContentAgentMemoryManager(runtime);
         await contentMemory.initialize();
@@ -68,11 +74,11 @@ export class ContentManagerService extends Service {
 
         // Initialize the content delivery service
         const contentDeliveryService = new ContentDeliveryService();
-        await contentDeliveryService.initialize(runtime, contentMemory, approvalService);
+        await contentDeliveryService.initialize(runtime, contentMemory, approvalService, adapterProvider);
 
         //Initialize content creation service
         const contentCreationService = new ContentCreationService(runtime, contentMemory);
-        await contentCreationService.initialize([twitterAdapter]);
+        await contentCreationService.initialize(adapterProvider);
 
         // Initialize decision engine
         const decisionEngine = new DecisionEngine(runtime, contentMemory);
@@ -83,14 +89,8 @@ export class ContentManagerService extends Service {
         // Initialize planning service
         const planningService = new PlanningService(runtime, contentMemory);
 
-        // Initialize platform clients
-        for (const [platform, registration] of this.adapterRegistry.entries()) {
-            try {
-                await registration.adapter.initialize(this.runtime);
-                elizaLogger.debug(`[ContentManagerService] Adapter for ${platform} initialized`);
-            } catch (error) {
-                elizaLogger.error(`[ContentManagerService] Failed to initialize adapter for ${platform}: ${error}`);
-            }
-        }
+        // Initialize news service
+        const newsService = new NewsService(runtime, contentMemory);
+        await newsService.initialize(adapterProvider);
     }
 }

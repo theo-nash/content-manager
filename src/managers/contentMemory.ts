@@ -108,6 +108,14 @@ export class ContentAgentMemoryManager implements IMemoryManager {
     }
 
     async createMemory(memory: Memory, unique: boolean = false): Promise<void> {
+        const existingMessage =
+            await this.getMemoryById(memory.id);
+
+        if (existingMessage) {
+            elizaLogger.debug("Memory already exists, skipping");
+            return;
+        }
+
         // Add embedding if needed
         const memoryWithEmbedding = await this.addEmbeddingToMemory(memory);
 
