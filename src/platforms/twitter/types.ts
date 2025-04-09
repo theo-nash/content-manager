@@ -17,3 +17,9 @@ export const blankState = {
     recentMessages: "",
     recentMessagesData: [],
 }
+
+// Interface for each tweet object in the input array
+export interface TweetThreadItem {
+    text: string;                 // The text content of the tweet
+    mediaData?: MediaData[]; // Optional media attachments for the tweet
+}

@@ -33,7 +33,7 @@ export class TwitterAdapter implements PlatformAdapter {
 
         // Initialize posting client
         this.postClient = new TwitterPostClient(client, runtime);
-        await this.postClient.start();
+
         console.log("[TwitterAdapter] Twitter post client started");
     }
 
@@ -125,30 +125,24 @@ export class TwitterAdapter implements PlatformAdapter {
             `twitter_generate_room-${this.postClient.client.profile.username}`
         )
 
-        if (this.postClient.approvalRequired) {
-            const taskId = await this.postClient.sendForVerification(
-                content.formattedContent.tweetTextForPosting,
-                roomId,
-                content.formattedContent.rawTweetContent
-            );
+        elizaLogger.log("[TwitterAdapter] Publishing content to Twitter:", content.formattedContent.tweetTextForPosting);
 
-            if (taskId === "direct-posted") {
-                elizaLogger.log("[TwitterAdapter] Tweet was posted directly due to verification fallback");
-            } else if (taskId) {
-                elizaLogger.log(`[TwitterAdapter] Tweet sent for verification with task ID: ${taskId}`);
-            } else {
-                elizaLogger.error("[TwitterAdapter] Failed to send tweet for verification");
-            }
+        const publishResult = await this.postClient.postTweet(
+            this.runtime,
+            this.postClient.client,
+            content.formattedContent.tweetTextForPosting,
+            roomId,
+            content.formattedContent.rawTweetContent,
+            this.postClient.twitterUsername,
+            content.formattedContent.mediaData
+        );
 
-            return { success: false, publishedUrl: null, timestamp: new Date() };
-        }
-        else {
-            elizaLogger.log("[TwitterAdapter] Publishing content to Twitter:", content.formattedContent.tweetTextForPosting);
-
-            const publishResult = await this.postClient.postTweet(this.runtime, this.postClient.client, content.formattedContent.tweetTextForPosting, roomId, content.formattedContent.rawTweetContent, this.postClient.twitterUsername, content.formattedContent.mediaData);
-
-            return { success: publishResult !== null, publishedUrl: publishResult?.permanentUrl || null, timestamp: new Date(publishResult.timestamp) || new Date(), platformId: publishResult?.id || null };
-        }
+        return {
+            success: publishResult !== null,
+            publishedUrl: publishResult?.permanentUrl || null,
+            timestamp: new Date(publishResult.timestamp) || new Date(),
+            platformId: publishResult?.id || null
+        };
     }
 
     async getPerformanceMetrics(contentId: string): Promise<PerformanceMetrics> {
