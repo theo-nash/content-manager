@@ -8,15 +8,11 @@ import { z, ZodError } from "zod";
 import { Timeframe } from "./types";
 
 // Default values
-export const DEFAULT_APPROVAL_CHANNEL = "content-approvals";
-export const DEFAULT_NOTIFICATION_CHANNEL = "content-notifications";
 export const DEFAULT_MICRO_PLAN_TIMEFRAME = Timeframe.WEEKLY;
 
 // Configuration schema
 export const contentPlanningConfigSchema = z.object({
-    APPROVAL_CHANNEL: z.string().default(DEFAULT_APPROVAL_CHANNEL),
-    NOTIFICATION_CHANNEL: z.string().default(DEFAULT_NOTIFICATION_CHANNEL),
-    DEFAULT_MICRO_PLAN_TIMEFRAME: z.enum([
+    MICRO_PLAN_TIMEFRAME: z.enum([
         Timeframe.DAILY,
         Timeframe.WEEKLY,
         Timeframe.MONTHLY,
@@ -35,17 +31,7 @@ export async function validateContentPlanningConfig(
 ): Promise<ContentPlanningConfig> {
     try {
         const config = {
-            APPROVAL_CHANNEL:
-                runtime.getSetting("APPROVAL_CHANNEL") ||
-                process.env.APPROVAL_CHANNEL ||
-                DEFAULT_APPROVAL_CHANNEL,
-
-            NOTIFICATION_CHANNEL:
-                runtime.getSetting("NOTIFICATION_CHANNEL") ||
-                process.env.NOTIFICATION_CHANNEL ||
-                DEFAULT_NOTIFICATION_CHANNEL,
-
-            DEFAULT_MICRO_PLAN_TIMEFRAME: (
+            MICRO_PLAN_TIMEFRAME: (
                 runtime.getSetting("DEFAULT_MICRO_PLAN_TIMEFRAME") ||
                 process.env.DEFAULT_MICRO_PLAN_TIMEFRAME ||
                 DEFAULT_MICRO_PLAN_TIMEFRAME
@@ -57,9 +43,73 @@ export async function validateContentPlanningConfig(
         elizaLogger.error("Content planning configuration validation failed:", error);
         // Return default config on error
         return {
+            MICRO_PLAN_TIMEFRAME: DEFAULT_MICRO_PLAN_TIMEFRAME
+        };
+    }
+}
+
+/**
+ * -------- APPROVAL CONFIG -----------
+ * This schema defines all required/optional environment settings for approval integration.
+ */
+export const DEFAULT_APPROVAL_CHANNEL = "content-approvals";
+export const DEFAULT_NOTIFICATION_CHANNEL = "content-notifications";
+
+export const approvalConfigSchema = z.object({
+    APPROVAL_ENABLED: z.boolean().default(true),
+    APPROVAL_AUTOAPPROVE: z.boolean().default(false),
+    AUTO_REJECT_DAYS: z.number().default(7),
+    APPROVAL_CHANNEL: z.string().default(DEFAULT_APPROVAL_CHANNEL),
+    NOTIFICATION_CHANNEL: z.string().default(DEFAULT_NOTIFICATION_CHANNEL),
+});
+
+export type ApprovalConfig = z.infer<typeof approvalConfigSchema>;
+
+/**
+ * Validates or constructs a ApprovalConfig object using values
+ * from the IAgentRuntime or process.env as needed.
+ */
+export async function validateApprovalConfig(
+    runtime: IAgentRuntime
+): Promise<ApprovalConfig> {
+    try {
+        const config = {
+            APPROVAL_ENABLED:
+                parseBooleanFromText(
+                    runtime.getSetting("APPROVAL_ENABLED") ||
+                    process.env.APPROVAL_ENABLED
+                ) ?? true,
+
+            APPROVAL_AUTOAPPROVE:
+                parseBooleanFromText(
+                    runtime.getSetting("APPROVAL_AUTOAPPROVE") ||
+                    process.env.APPROVAL_AUTOAPPROVE
+                ) ?? false,
+
+            AUTO_REJECT_DAYS:
+                safeParseInt(
+                    runtime.getSetting("AUTO_REJECT_DAYS") ||
+                    process.env.AUTO_REJECT_DAYS, 7
+                ),
+
+            APPROVAL_CHANNEL:
+                runtime.getSetting("APPROVAL_CHANNEL") ||
+                process.env.APPROVAL_CHANNEL ||
+                DEFAULT_APPROVAL_CHANNEL,
+
+            NOTIFICATION_CHANNEL:
+                runtime.getSetting("NOTIFICATION_CHANNEL") ||
+                process.env.NOTIFICATION_CHANNEL ||
+                DEFAULT_NOTIFICATION_CHANNEL,
+        };
+
+        return approvalConfigSchema.parse(config);
+    } catch (error) {
+        elizaLogger.error("Approval configuration validation failed:", error);
+        // Return default config on error
+        return {
             APPROVAL_CHANNEL: DEFAULT_APPROVAL_CHANNEL,
             NOTIFICATION_CHANNEL: DEFAULT_NOTIFICATION_CHANNEL,
-            DEFAULT_MICRO_PLAN_TIMEFRAME: DEFAULT_MICRO_PLAN_TIMEFRAME
         };
     }
 }

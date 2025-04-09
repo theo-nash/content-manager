@@ -171,7 +171,7 @@ export class ContentDeliveryService {
 
                 elizaLogger.debug(`[ContentDeliveryService] Sending content for approval: ${contentPiece.id}`);
 
-                await this.approvalService.sendForApproval(formattedContent, this.publishContent)
+                await this.approvalService.sendForApproval(formattedContent, (request) => this.publishContent(request))
 
                 return {
                     contentId: contentPiece.id,
@@ -184,7 +184,7 @@ export class ContentDeliveryService {
                 };
 
             } else {
-                const approvalResult: ApprovalRequest = {
+                const approvalResult: ApprovalRequest<ContentPiece> = {
                     id: stringToUuid(`${contentPiece.id}-approval`),
                     content: formattedContent,
                     platform: contentPiece.platform,
@@ -201,7 +201,7 @@ export class ContentDeliveryService {
         }
     }
 
-    async publishContent(approvalResult: ApprovalRequest): Promise<ContentDeliveryResult> {
+    async publishContent(approvalResult: ApprovalRequest<ContentPiece>): Promise<ContentDeliveryResult> {
         const contentPiece = approvalResult.content;
         let attempts = 0;
 

@@ -11,6 +11,7 @@ export class TwitterAdapter implements PlatformAdapter {
     platformId = "twitter";
     platform = Platform.TWITTER;
     capabilities = ["formatContent", "publishContent", "getPerformanceMetrics"];
+    contentFormats: string[] = ["tweet", "thread"];
 
     private postClient: TwitterPostClient | undefined;
     private runtime: IAgentRuntime;

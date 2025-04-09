@@ -1,11 +1,17 @@
 import { elizaLogger, getProviders, IAgentRuntime, stringToUuid } from "@elizaos/core";
 import { ApprovalProvider } from "../approval/base";
-import { ApprovalRequest, ContentPiece, ApprovalStatus, Platform } from "../types";
+import { ApprovalRequest, ContentPiece, ApprovalStatus, Platform, MasterPlan, MicroPlan } from "../types";
+import { ApprovalConfig } from "../environment";
+
+// Constants for cache management
+const CACHE_TTL_DAYS = 7; // Standardize on 7 days
+const CACHE_KEY_PENDING = "pendingApprovals";
 
 export class ContentApprovalService {
     private runtime: IAgentRuntime;
     private providers: Map<string, ApprovalProvider>;
-    pendingApprovals: Map<string, ApprovalRequest> = new Map();
+    pendingApprovals: Map<string, ApprovalRequest<any>> = new Map();
+    config: ApprovalConfig;
 
     constructor(runtime: IAgentRuntime, providers: ApprovalProvider[]) {
         this.runtime = runtime;
@@ -16,8 +22,16 @@ export class ContentApprovalService {
         });
     }
 
-    async initialize(): Promise<void> {
+    async initialize(approvalConfig: ApprovalConfig): Promise<void> {
         elizaLogger.debug("[ContentApprovalService] Initializing ContentApprovalService");
+
+        this.config = approvalConfig;
+
+        // Check if the service is enabled
+        if (!approvalConfig.APPROVAL_ENABLED) {
+            elizaLogger.warn("[ContentApprovalService] Content approval service is disabled.");
+            return;
+        }
 
         // Initialize all providers
         for (const provider of this.providers.values()) {
@@ -30,10 +44,7 @@ export class ContentApprovalService {
         }
 
         // Load pending approvals from cache
-        const cachedApprovals = await this.runtime.cacheManager.get<Map<string, ApprovalRequest>>("pendingApprovals");
-        if (cachedApprovals) {
-            this.pendingApprovals = cachedApprovals;
-        }
+        await this.loadPendingApprovalsFromCache();
 
         // Check all pending approvals
         await this.checkAllPendingApprovals();
@@ -42,11 +53,41 @@ export class ContentApprovalService {
         setInterval(async () => {
             try {
                 await this.checkAllPendingApprovals();
+                await this.cleanupStaleApprovals();
             } catch (error) {
                 elizaLogger.error(`[ContentApprovalService] Error during periodic check: ${error}`);
             }
         }, 2 * 60 * 1000); // Check every 2 minutes
 
+    }
+
+    private async loadPendingApprovalsFromCache(): Promise<void> {
+        try {
+            const cachedApprovals = await this.runtime.cacheManager.get<Array<[string, ApprovalRequest<any>]>>(CACHE_KEY_PENDING);
+
+            if (cachedApprovals) {
+                this.pendingApprovals = new Map(cachedApprovals);
+                elizaLogger.debug(`[ContentApprovalService] Loaded ${this.pendingApprovals.size} pending approvals from cache`);
+            }
+
+            await this.cleanupStaleApprovals();
+
+        } catch (error) {
+            elizaLogger.error(`[ContentApprovalService] Error loading approvals from cache: ${error}`);
+            // Initialize with empty map if there's an error
+            this.pendingApprovals = new Map();
+        }
+    }
+
+    private async savePendingApprovalsToCache(): Promise<void> {
+        const serializedApprovals = Array.from(this.pendingApprovals.entries());
+        const expiresAt = Date.now() + (CACHE_TTL_DAYS * 24 * 60 * 60 * 1000);
+
+        await this.runtime.cacheManager.set(
+            CACHE_KEY_PENDING,
+            serializedApprovals,
+            { expires: expiresAt }
+        );
     }
 
     getProvider(platform: Platform): ApprovalProvider | undefined {
@@ -59,15 +100,32 @@ export class ContentApprovalService {
         }
     }
 
-    async sendForApproval(content: ContentPiece, callback: Function): Promise<ApprovalRequest> {
-        const provider = this.getProvider(content.platform);
-
-        if (!provider) {
-            elizaLogger.error(`[ContentApprovalService] No approval provider found for platform ${content.platform}`);
+    async sendForApproval<T extends ContentPiece | MasterPlan | MicroPlan>(
+        content: T,
+        callback: Function
+    ): Promise<ApprovalRequest<T>> {
+        if (this.config.APPROVAL_AUTOAPPROVE) {
+            elizaLogger.warn("[ContentApprovalService] Auto-approve is enabled. Skipping approval.");
             return {
                 id: stringToUuid(`${content.id}-approval`),
                 content: content,
-                platform: content.platform,
+                platform: "none",
+                requesterId: this.runtime.agentId,
+                timestamp: new Date(),
+                status: ApprovalStatus.APPROVED,
+                callback: callback,
+            };
+        }
+
+        // Get a default provider
+        let provider = Array.from(this.providers.values())[0];
+
+        if (!provider) {
+            elizaLogger.error("[ContentApprovalService] No approval provider registered.");
+            return {
+                id: stringToUuid(`${content.id}-approval`),
+                content: content,
+                platform: "none",
                 requesterId: this.runtime.agentId,
                 timestamp: new Date(),
                 status: ApprovalStatus.FAILED,
@@ -75,21 +133,37 @@ export class ContentApprovalService {
             };
         }
 
+        // Check content type and assign proper provider
+        if ('topic' in content && 'format' in content) {
+            // This is a content piece
+            const _c = content as ContentPiece;
+            provider = this.getProvider(_c.platform);
+
+            if (!provider) {
+                elizaLogger.error(`[ContentApprovalService] No approval provider found for platform ${content.platform}`);
+                return {
+                    id: stringToUuid(`${content.id}-approval`),
+                    content: content,
+                    platform: provider.providerName,
+                    requesterId: this.runtime.agentId,
+                    timestamp: new Date(),
+                    status: ApprovalStatus.FAILED,
+                    callback: callback,
+                };
+            }
+        }
+
         const providerName = provider.providerName;
 
         // Check cache for a repeat request
         const cacheKey = `approval/${providerName}/${content.id}-approval`;
-        const cachedRequest = await this.runtime.cacheManager.get<ApprovalRequest>(cacheKey);
+        const cachedRequest = await this.runtime.cacheManager.get<ApprovalRequest<T>>(cacheKey);
 
         if (cachedRequest) {
             return cachedRequest;
         }
 
-        if (!provider) {
-            throw new Error(`[ContentApprovalService] Approval provider "${providerName}" not found.`);
-        }
-
-        const request: ApprovalRequest = {
+        const request: ApprovalRequest<T> = {
             id: stringToUuid(`${content.id}-approval`),
             content: content,
             platform: providerName,
@@ -101,12 +175,19 @@ export class ContentApprovalService {
 
         await provider.submitForApproval(request);
 
+        // Cache the individual request
+        await this.runtime.cacheManager.set(
+            cacheKey,
+            request,
+            { expires: Date.now() + (CACHE_TTL_DAYS * 24 * 60 * 60 * 1000) }
+        );
+
         await this.addPendingApproval(request);
 
         return request;
     }
 
-    async checkApprovalStatus(request: ApprovalRequest): Promise<ApprovalRequest> {
+    async checkApprovalStatus<T extends ContentPiece | MasterPlan | MicroPlan>(request: ApprovalRequest<T>): Promise<ApprovalRequest<T>> {
         if (!this.pendingApprovals.has(request.id)) {
             elizaLogger.warn(`[ContentApprovalService] Approval request "${request.id}" not found.`);
             return request;
@@ -114,20 +195,24 @@ export class ContentApprovalService {
 
         const provider = this.providers.get(request.platform);
         if (!provider) {
-            throw new Error(`[ContentApprovalService] Approval provider "${request.platform}" not found.`);
+            elizaLogger.error(`[ContentApprovalService] Approval provider "${request.platform}" not found.`);
+            const failedRequest = { ...request, status: ApprovalStatus.FAILED };
+            await this.updateApprovalRequest(failedRequest);
+            return failedRequest;
         }
 
-        const status = await provider.checkApprovalStatus(request);
+        try {
+            const status = await provider.checkApprovalStatus(request);
 
-        if (status.status === ApprovalStatus.APPROVED) {
-            await this.handleApprovedRequest(status);
+            if (status.status !== request.status) {
+                await this.updateApprovalRequest(status);
+            }
+
+            return status;
+        } catch (error) {
+            elizaLogger.error(`[ContentApprovalService] Error checking approval status: ${error}`);
+            return request;
         }
-
-        if (status.status !== request.status) {
-            await this.updateApprovalRequest(status);
-        }
-
-        return status;
     }
 
     async registerProvider(provider: ApprovalProvider): Promise<void> {
@@ -138,7 +223,7 @@ export class ContentApprovalService {
         this.providers.set(provider.providerName, provider);
     }
 
-    async addPendingApproval(request: ApprovalRequest): Promise<void> {
+    async addPendingApproval(request: ApprovalRequest<any>): Promise<void> {
         if (this.pendingApprovals.has(request.id)) {
             elizaLogger.warn(`[ContentApprovalService] Approval request "${request.id}" already exists.`);
             return;
@@ -146,49 +231,52 @@ export class ContentApprovalService {
 
         this.pendingApprovals.set(request.id, request);
 
-        // Update the cache with the current pending approval map
-        this.runtime.cacheManager.set(
-            `pendingApprovals`,
-            this.pendingApprovals,
-            { expires: Date.now() + 60 * 60 * 1000 * 24 } // 24 hour TTL
-        )
+        await this.savePendingApprovalsToCache();
     }
 
-    async handleApprovedRequest(request: ApprovalRequest): Promise<void> {
-        if (request.status != ApprovalStatus.APPROVED) {
-            elizaLogger.warn(`Approval request "${request.id}" is not approved.`);
-            return;
-        }
-
-        await request.callback(request);
-
-        elizaLogger.log(`[ContentApprovalService] Approval request handled: ${request.id}`);
-
-        if (this.pendingApprovals.has(request.id)) {
-            this.pendingApprovals.delete(request.id);
-        }
-
-        // Update the cache with the current pending approval map
-        this.runtime.cacheManager.set(
-            `pendingApprovals`,
-            this.pendingApprovals,
-            { expires: Date.now() + 60 * 60 * 1000 * 24 } // 24 hour TTL
-        )
-    }
-
-    async updateApprovalRequest(request: ApprovalRequest): Promise<void> {
+    async updateApprovalRequest(request: ApprovalRequest<any>): Promise<void> {
         if (!this.pendingApprovals.has(request.id)) {
-            elizaLogger.warn(`Approval request "${request.id}" not found.`);
+            elizaLogger.warn(`[ContentApprovalService] Approval request "${request.id}" not found.`);
             return;
         }
 
-        if (request.status === ApprovalStatus.APPROVED) {
-            await this.runtime.cacheManager.delete(`approval/${request.platform}/${request.id}`);
+        const finalStatuses = [ApprovalStatus.APPROVED, ApprovalStatus.REJECTED, ApprovalStatus.FAILED];
+
+        if (finalStatuses.includes(request.status)) {
             this.pendingApprovals.delete(request.id);
-            return;
+        } else {
+            this.pendingApprovals.set(request.id, request);
         }
 
-        this.pendingApprovals.set(request.id, request);
+        // Save updates to cache
+        await this.savePendingApprovalsToCache();
+
+        // Execute callback with error handling
+        try {
+            await request.callback(request);
+        } catch (error) {
+            elizaLogger.error(`[ContentApprovalService] Error executing callback for approval request ${request.id}: ${error}`);
+        }
+
+        elizaLogger.log(`[ContentApprovalService] Approval request updated: ${request.id} - Status: ${request.status}`);
+    }
+
+    private async cleanupStaleApprovals(): Promise<void> {
+        const now = new Date();
+        const staleThreshold = new Date(now.getTime() - (this.config.AUTO_REJECT_DAYS * 24 * 60 * 60 * 1000));
+
+        for (const [id, request] of this.pendingApprovals.entries()) {
+            if (request.timestamp < staleThreshold) {
+                elizaLogger.warn(`[ContentApprovalService] Auto-rejecting stale approval request: ${id}`);
+
+                const rejectedRequest = {
+                    ...request,
+                    status: ApprovalStatus.REJECTED
+                };
+
+                await this.updateApprovalRequest(rejectedRequest);
+            }
+        }
     }
 
     private async checkAllPendingApprovals() {

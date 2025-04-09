@@ -1,6 +1,6 @@
 import { UUID, Service, IAgentRuntime, elizaLogger, ServiceType } from "@elizaos/core";
 
-import { validateContentPlanningConfig, validateTwitterConfig } from "../environment";
+import { validateApprovalConfig, validateContentPlanningConfig, validateTwitterConfig } from "../environment";
 import { ContentDeliveryService } from "./contentDelivery";
 import { ContentApprovalService } from "./contentApproval";
 import { ContentAgentMemoryManager } from "../managers/contentMemory";
@@ -16,7 +16,6 @@ export class ContentManagerService extends Service {
     capabilityDescription = "Provides a platform-specific adapter for content management";
     private static serviceInstance: ContentManagerService | null = null;
     private static serviceMap: Map<string, any> = new Map();
-    private runtime: IAgentRuntime;
 
     static get serviceType(): ServiceType {
         return "content-manager" as ServiceType;
@@ -36,7 +35,6 @@ export class ContentManagerService extends Service {
 
     async initialize(runtime: IAgentRuntime): Promise<void> {
         elizaLogger.debug("[ContentManagerService] Initializing ContentManagerService");
-        this.runtime = runtime;
 
         // Initialize adapters
         const twitterAdapter = new TwitterAdapter();
@@ -45,6 +43,7 @@ export class ContentManagerService extends Service {
         // Initialize configuration
         const TwitterConfig = await validateTwitterConfig(runtime);
         const planningConfig = await validateContentPlanningConfig(runtime);
+        const approvalConfig = await validateApprovalConfig(runtime);
 
         // Initialize adapter provider
         const adapterProvider = new AdapterProvider();
@@ -56,7 +55,7 @@ export class ContentManagerService extends Service {
 
         // Initialize approval service
         const approvalService = new ContentApprovalService(runtime, []);
-        await approvalService.initialize();
+        await approvalService.initialize(approvalConfig);
 
         // Initialize the content delivery service
         const contentDeliveryService = new ContentDeliveryService();
@@ -74,6 +73,7 @@ export class ContentManagerService extends Service {
 
         // Initialize planning service
         const planningService = new PlanningService(runtime, contentMemory);
+        await planningService.initialize(adapterProvider, planningConfig);
 
         // Initialize news service
         const newsService = new NewsService(runtime, contentMemory);

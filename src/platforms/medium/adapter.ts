@@ -4,6 +4,7 @@ import { ContentPiece, ContentValidationResult, FormattedContent, Platform, Plat
 export class MediumAdapter implements PlatformAdapter {
     platformId = "medium";
     platform = Platform.MEDIUM;
+    contentFormats: ["article", "blog", "post"];
     capabilities = ["formatContent", "validateContent", "publishContent"];
 
     private runtime: IAgentRuntime;

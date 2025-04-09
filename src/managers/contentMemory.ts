@@ -26,7 +26,8 @@ export const ROOM_IDS = {
     NEWS_EVENTS: "news-events-room" as UUID,
     TRENDING_TOPICS: "trending-topics-room" as UUID,
     CONTENT_DECISIONS: "content-decisions-room" as UUID,
-    PROGRESS_EVALUATIONS: "progress-evaluations-room" as UUID
+    PROGRESS_EVALUATIONS: "progress-evaluations-room" as UUID,
+    APPROVALS: "approvals-room" as UUID
 };
 
 // Define our custom memory manager class
@@ -119,6 +120,10 @@ export class ContentAgentMemoryManager implements IMemoryManager {
         // Add embedding if needed
         const memoryWithEmbedding = await this.addEmbeddingToMemory(memory);
 
+        // Add to cache
+        const cacheKey = `content/${memory.id}`;
+        await this.runtime.cacheManager.set(cacheKey, memoryWithEmbedding);
+
         await this.runtime.databaseAdapter.createMemory(
             memoryWithEmbedding,
             this.tableName,
@@ -126,19 +131,56 @@ export class ContentAgentMemoryManager implements IMemoryManager {
         );
     }
 
+    async updateMemory(memory: Memory): Promise<void> {
+        const existingMemory = await this.getMemoryById(memory.id);
+        if (!existingMemory) {
+            elizaLogger.error(`Memory with ID ${memory.id} not found.`);
+            return;
+        }
+
+        await this.runtime.databaseAdapter.removeMemory(
+            memory.id,
+            this.tableName
+        );
+
+        await this.createMemory(memory);
+        elizaLogger.debug(`Memory with ID ${memory.id} updated.`);
+    }
+
     async getMemoriesByRoomIds(params: {
         roomIds: UUID[];
         limit?: number;
     }): Promise<Memory[]> {
-        return await this.runtime.databaseAdapter.getMemoriesByRoomIds({
+        // Check cache
+        const cacheKey = `content/${params.roomIds.join(",")}/memories/${params.limit}`;
+        const cachedMemories = await this.runtime.cacheManager.get<Memory[]>(cacheKey);
+        if (cachedMemories) {
+            return cachedMemories;
+        }
+
+        const _m = await this.runtime.databaseAdapter.getMemoriesByRoomIds({
             ...params,
             tableName: this.tableName,
             agentId: this.runtime.agentId
         });
+
+        await this.runtime.cacheManager.set(cacheKey, _m);
+        return _m;
     }
 
     async getMemoryById(id: UUID): Promise<Memory | null> {
-        return await this.runtime.databaseAdapter.getMemoryById(id);
+        // Check cache
+        const cacheKey = `content/${id}`;
+        const cachedMemory = await this.runtime.cacheManager.get<Memory>(cacheKey);
+
+        if (cachedMemory) {
+            return cachedMemory;
+        }
+
+        const _m = await this.runtime.databaseAdapter.getMemoryById(id);
+
+        await this.runtime.cacheManager.set(cacheKey, _m);
+        return _m;
     }
 
     async removeMemory(memoryId: UUID): Promise<void> {
@@ -175,20 +217,9 @@ export class ContentAgentMemoryManager implements IMemoryManager {
 
     // Generic function to get an entity by ID
     async getEntityById<T>(id: UUID): Promise<T | null> {
-        // Check cache
-        const cacheKey = `content/${id}`;
-        const cachedMemory = await this.runtime.cacheManager.get<Memory>(cacheKey);
-
-        if (cachedMemory) {
-            return JSON.parse(cachedMemory.content.text || "{}") as T;
-        }
-
         try {
             const memory = await this.getMemoryById(id);
             if (!memory) return null;
-
-            // Cache the memory
-            await this.runtime.cacheManager.set(cacheKey, memory);
 
             // Parse the content and return
             if (!memory.content?.text) {

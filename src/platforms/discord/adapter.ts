@@ -5,6 +5,7 @@ import { Client, GatewayIntentBits, TextChannel, MessageCreateOptions, EmbedBuil
 export class DiscordAdapter implements PlatformAdapter {
     platformId = "discord";
     platform = Platform.DISCORD;
+    contentFormats: ["message"];
     capabilities = ["formatContent", "publishContent", "getPerformanceMetrics"];
 
     private client: Client | null = null;

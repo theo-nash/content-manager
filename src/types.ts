@@ -7,18 +7,21 @@ export enum Timeframe {
     QUARTERLY = "quarterly"
 }
 
-export interface MasterPlan {
+export interface Plan {
     id: UUID;
+    version: number;
+    approvalStatus: ApprovalStatus;
+    created: Date;
+    modified: Date;
+}
+
+export interface MasterPlan extends Plan {
     title: string;
     goals: Goal[];
     contentMix: ContentMixItem[];
     audience: AudienceSegment[];
     brandVoice: BrandVoice;
     timeline: Timeline;
-    version: number;
-    approvalStatus: ApprovalStatus;
-    created: Date;
-    modified: Date;
 }
 
 export interface Goal {
@@ -83,15 +86,10 @@ export enum ApprovalStatus {
     FAILED = "failed"
 }
 
-export interface MicroPlan {
-    id: UUID;
+export interface MicroPlan extends Plan {
     masterPlanId: UUID;
     period: { start: Date; end: Date };
     contentPieces: ContentPiece[];
-    approvalStatus: ApprovalStatus;
-    version: number;
-    created: Date;
-    modified: Date;
 }
 
 export interface ContentPiece {
@@ -108,6 +106,7 @@ export interface ContentPiece {
     generatedContent?: any;
     formattedContent?: any;
     platformId?: string; // optional, for tracking on specific platforms
+    medaiData?: any; // optional, for media attachments
 }
 
 export interface FormattedContent extends ContentPiece {
@@ -267,6 +266,8 @@ export interface PlatformAdapter {
     platformId: string;
     platform: Platform;
     capabilities: string[];
+    contentTypes?: string[];
+    contentFormats: string[];
 
     // Initialization
     initialize(runtime: IAgentRuntime): Promise<void>;
@@ -312,9 +313,9 @@ export interface AdapterRegistration {
     priority?: number;
 }
 
-export interface ApprovalRequest {
+export interface ApprovalRequest<T> {
     id: UUID;
-    content: ContentPiece;
+    content: T;
     platform: string;
     requesterId: string;
     timestamp: Date;

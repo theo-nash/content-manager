@@ -19,12 +19,12 @@ export interface ApprovalProvider {
      * Submit content for approval
      * @returns The request ID or null if submission failed
      */
-    submitForApproval(request: ApprovalRequest): Promise<void>;
+    submitForApproval(request: ApprovalRequest<any>): Promise<void>;
 
     /**
      * Check the status of an approval request
      */
-    checkApprovalStatus(request: ApprovalRequest): Promise<ApprovalRequest>;
+    checkApprovalStatus(request: ApprovalRequest<any>): Promise<ApprovalRequest<any>>;
 
     /**
      * Clean up resources for a request after processing
