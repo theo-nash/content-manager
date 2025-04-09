@@ -15,6 +15,18 @@ export class NewsService {
 
         this.adapterProvider = adapterProvider;
 
+        // Fetch recent news events
+        const recentNews = await this.fetchRecentNews();
+        if (recentNews.length > 0) {
+            elizaLogger.info("[NewsService] Fetched recent news events:", recentNews);
+        }
+
+        // Fetch trending topics
+        const trendingTopics = await this.fetchTrendingTopics();
+        if (trendingTopics.length > 0) {
+            elizaLogger.info("[NewsService] Fetched trending topics:", trendingTopics);
+        }
+
         // Start monitoring for news events
         this.startNewsMonitoring();
     }

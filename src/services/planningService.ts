@@ -30,7 +30,6 @@ const __dirname = path.dirname(__filename);
 
 export class PlanningService {
     private adapterProvider: AdapterProvider;
-    private publishingPlatforms: Platform[] = [];
     private platformFormats: Map<Platform, Map<string, string[]>> = new Map();
     private platformFormatting = {};
     private plansDirectory: string;
@@ -48,7 +47,6 @@ export class PlanningService {
         elizaLogger.log("[PlanningService] Micro plan frequency set to:", this.config.MICRO_PLAN_TIMEFRAME);
 
         const adapters = await this.adapterProvider.getAllAdapters();
-        this.publishingPlatforms = adapters.map(adapter => adapter.platform);
         this.platformFormats = new Map();
 
         for (const adapter of adapters) {
