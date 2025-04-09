@@ -23,6 +23,10 @@ import * as path from 'path';
 import { ContentManagerService } from "./contentManager";
 import { ContentApprovalService } from "./contentApproval";
 import { ContentPlanningConfig } from "../environment";
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export class PlanningService {
     private adapterProvider: AdapterProvider;
@@ -60,7 +64,7 @@ export class PlanningService {
             });
         });
 
-        elizaLogger.debug("[PlanningService] Available publishing platforms:", this.publishingPlatforms);
+        elizaLogger.debug("[PlanningService] Available platforms and formats:", this.platformFormats);
 
         await this.loadExistingPlans();
 
@@ -227,6 +231,7 @@ export class PlanningService {
 
         // Store master plan in database
         await this.memoryManager.createMasterPlan(masterPlan);
+        await this.savePlanToFile(masterPlan);
 
         return masterPlan;
     }
@@ -247,6 +252,7 @@ export class PlanningService {
 
         // Store micro plan in database
         await this.memoryManager.createMicroPlan(microPlan);
+        await this.savePlanToFile(microPlan);
 
         return microPlan;
     }
@@ -609,6 +615,7 @@ Respond with the JSON array only. No explanations or other text.`;
 
         // Store updated plan
         await this.memoryManager.updateMemory(newMemory);
+        await this.savePlanToFile(plan);
     }
 
     async submitPlanForApproval<T extends MasterPlan | MicroPlan>(plan: T): Promise<ApprovalRequest<T>> {
@@ -666,6 +673,18 @@ Respond with the JSON array only. No explanations or other text.`;
         }
 
         return endDate;
+    }
+
+    private async savePlanToFile(plan: MasterPlan | MicroPlan): Promise<void> {
+        const fileName = `${plan.id}.json`;
+        const filePath = path.join(this.plansDirectory, fileName);
+
+        try {
+            await fs.writeFile(filePath, JSON.stringify(plan, null, 2));
+            elizaLogger.debug(`[PlanningService] Saved plan to file: ${filePath}`);
+        } catch (error) {
+            elizaLogger.error(`[PlanningService] Error saving plan to file:`, error);
+        }
     }
 }
 

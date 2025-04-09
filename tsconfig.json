@@ -21,6 +21,6 @@
         "moduleDetection": "force",
         "allowArbitraryExtensions": true
     },
-    "include": ["src/**/*.ts"],
+    "include": ["src/**/*.ts", "plans/**/*.json"],
     "exclude": ["node_modules", "**/*.test.ts"]
 }

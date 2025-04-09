@@ -25,6 +25,8 @@ export class NewsService {
 
     async fetchTrendingTopics(): Promise<TrendingTopic[]> {
         try {
+            elizaLogger.debug("[NewsService] Fetching trending topics");
+
             let trendingTopics: TrendingTopic[] = [];
 
             for (const adapter of this.adapterProvider.getAllAdapters()) {
@@ -45,6 +47,8 @@ export class NewsService {
                 )
             );
 
+            elizaLogger.debug("[NewsService] Fetched trending topics:", trendingTopics);
+
             return trendingTopics;
         } catch (error) {
             elizaLogger.error("[NewsService] Error fetching trending topics:", error);
@@ -58,6 +62,7 @@ export class NewsService {
 
         setInterval(async () => {
             try {
+                elizaLogger.debug("[NewsService] Fetching recent news events");
                 await this.fetchRecentNews();
                 await this.fetchTrendingTopics();
             } catch (error) {

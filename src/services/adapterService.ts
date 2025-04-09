@@ -17,7 +17,7 @@ export class AdapterProvider {
     private adapterRegistry: Map<Platform, AdapterRegistration> = new Map();
 
     registerAdapter(adapter: PlatformAdapter, config?: PlatformAdapterConfig): void {
-        elizaLogger.debug(`[ContentDeliveryService] Registering adapter for platform: ${adapter.platform}`);
+        elizaLogger.debug(`[AdapterProvider] Registering adapter for platform: ${adapter.platform}`);
 
         if (config) {
             adapter.configure(config);

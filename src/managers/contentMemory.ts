@@ -113,7 +113,7 @@ export class ContentAgentMemoryManager implements IMemoryManager {
             await this.getMemoryById(memory.id);
 
         if (existingMessage) {
-            elizaLogger.debug("Memory already exists, skipping");
+            elizaLogger.debug("[ContentMemoryManager] already exists, skipping");
             return;
         }
 
@@ -134,7 +134,7 @@ export class ContentAgentMemoryManager implements IMemoryManager {
     async updateMemory(memory: Memory): Promise<void> {
         const existingMemory = await this.getMemoryById(memory.id);
         if (!existingMemory) {
-            elizaLogger.error(`Memory with ID ${memory.id} not found.`);
+            elizaLogger.error(`[ContentMemoryManager] Memory with ID ${memory.id} not found.`);
             return;
         }
 
@@ -144,7 +144,7 @@ export class ContentAgentMemoryManager implements IMemoryManager {
         );
 
         await this.createMemory(memory);
-        elizaLogger.debug(`Memory with ID ${memory.id} updated.`);
+        elizaLogger.debug(`[ContentMemoryManager] Memory with ID ${memory.id} updated.`);
     }
 
     async getMemoriesByRoomIds(params: {
@@ -223,14 +223,14 @@ export class ContentAgentMemoryManager implements IMemoryManager {
 
             // Parse the content and return
             if (!memory.content?.text) {
-                elizaLogger.error(`Memory content is empty for ID: ${id}`);
+                elizaLogger.error(`[ContentMemoryManager] Memory content is empty for ID: ${id}`);
                 return null;
             }
 
             // Parse the content and return
             return JSON.parse(memory.content.text || "{}") as T;
         } catch (error) {
-            elizaLogger.error(`Error getting entity:`, error);
+            elizaLogger.error(`[ContentMemoryManager] Error getting entity:`, error);
             return null;
         }
     }
@@ -256,7 +256,7 @@ export class ContentAgentMemoryManager implements IMemoryManager {
                 })
                 .filter(Boolean) as T[];
         } catch (error) {
-            elizaLogger.error(`Error getting entities:`, error);
+            elizaLogger.error(`[ContentMemoryManager]Error getting entities:`, error);
             return [];
         }
     }
@@ -326,7 +326,7 @@ export class ContentAgentMemoryManager implements IMemoryManager {
         const microPlan = await this.getMicroPlanById(microPlanId);
 
         if (!microPlan) {
-            elizaLogger.error(`MicroPlan with ID ${microPlanId} not found.`);
+            elizaLogger.error(`[ContentMemoryManager]MicroPlan with ID ${microPlanId} not found.`);
             return [];
         }
 
@@ -335,7 +335,7 @@ export class ContentAgentMemoryManager implements IMemoryManager {
         const piecePromises = microPlanPieceIds.map(async pieceId => {
             const piece = await this.getContentPieceById(pieceId);
             if (!piece) {
-                elizaLogger.error(`ContentPiece with ID ${pieceId} not found.`);
+                elizaLogger.error(`[ContentMemoryManager] ContentPiece with ID ${pieceId} not found.`);
                 return null;
             }
             return piece;
@@ -347,7 +347,7 @@ export class ContentAgentMemoryManager implements IMemoryManager {
         if (filteredPieces.length > 0) {
             return filteredPieces;
         }
-        elizaLogger.error(`No ContentPieces found for MicroPlan with ID ${microPlanId}.`);
+        elizaLogger.error(`[ContentMemoryManager] No ContentPieces found for MicroPlan with ID ${microPlanId}.`);
         return [];
     }
 
