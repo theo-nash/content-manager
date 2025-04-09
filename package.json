@@ -1,5 +1,5 @@
 {
-  "name": "@plugins/content-planner",
+  "name": "@plugins/content-manager",
   "version": "0.1.0",
   "description": "Plugin to manage and plan content effectively.",
   "type": "module",

@@ -4,10 +4,12 @@ import {
     HandlerCallback,
     IAgentRuntime,
     Memory,
-    ModelType,
+    ModelClass,
     State
 } from "@elizaos/core";
 import { PlanningService } from "../services/planningService";
+import { ContentManagerService } from "../services";
+import { ContentPlanningConfig } from "../environment";
 
 export const createMasterPlanAction: Action = {
     name: "CREATE_MASTER_PLAN",
@@ -42,25 +44,14 @@ export const createMasterPlanAction: Action = {
 
         try {
             // Extract basic info from the message
-            const planningService = new PlanningService(runtime);
-
-            // Generate a plan title from the message
-            const titlePrompt = `Based on the following request, generate a concise, descriptive title for a content master plan:
-        
-  Request: ${message.content.text}
-  
-  Reply with just the title text, no quotes or additional formatting.`;
-
-            const generatedTitle = await runtime.useModel(ModelType.TEXT_SMALL, {
-                prompt: titlePrompt,
-                temperature: 0.5,
-                maxTokens: 50
-            });
+            const contentManager = await runtime.getService<ContentManagerService>(ContentManagerService.serviceType);
+            const planningService = await contentManager.getMicroService<PlanningService>("content-planning");
+            if (!planningService) {
+                throw new Error("Content planning service not available");
+            }
 
             // Create the master plan
-            const masterPlan = await planningService.createMasterPlan({
-                title: generatedTitle.trim()
-            });
+            const masterPlan = await planningService.createMasterPlan(message.content.text);
 
             // Send the master plan to the user
             if (callback) {
@@ -98,11 +89,11 @@ export const createMasterPlanAction: Action = {
     examples: [
         [
             {
-                name: "{{name1}}",
+                user: "{{name1}}",
                 content: { text: "Can you create a content master plan for my tech startup?" }
             },
             {
-                name: "{{name2}}",
+                user: "{{name2}}",
                 content: {
                     text: "I'll create a comprehensive content master plan for you. This may take a moment...",
                     thought: "The user wants me to create a content master plan. I'll use the planning service to generate a comprehensive plan based on their request.",

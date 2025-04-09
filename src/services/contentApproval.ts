@@ -57,7 +57,7 @@ export class ContentApprovalService {
             } catch (error) {
                 elizaLogger.error(`[ContentApprovalService] Error during periodic check: ${error}`);
             }
-        }, 2 * 60 * 1000); // Check every 2 minutes
+        }, this.config.APPROVAL_CHECK_INTERVAL * 60 * 1000);
 
     }
 
@@ -133,10 +133,13 @@ export class ContentApprovalService {
             };
         }
 
+        let contentType = "unknown";
+
         // Check content type and assign proper provider
         if ('topic' in content && 'format' in content) {
             // This is a content piece
             const _c = content as ContentPiece;
+            contentType = _c.platform;
             provider = this.getProvider(_c.platform);
 
             if (!provider) {
@@ -151,6 +154,12 @@ export class ContentApprovalService {
                     callback: callback,
                 };
             }
+        } else if ("masterPlanId" in content) {
+            // This is a microplan
+            contentType = "microplan";
+        } else if ("title" in content) {
+            // This is a masterplan
+            contentType = "masterplan";
         }
 
         const providerName = provider.providerName;
@@ -163,17 +172,17 @@ export class ContentApprovalService {
             return cachedRequest;
         }
 
-        const request: ApprovalRequest<T> = {
+        let request: ApprovalRequest<T> = {
             id: stringToUuid(`${content.id}-approval`),
             content: content,
-            platform: providerName,
+            platform: contentType,
             requesterId: this.runtime.agentId,
             timestamp: new Date(),
             status: ApprovalStatus.PENDING,
             callback: callback,
         };
 
-        await provider.submitForApproval(request);
+        request = await provider.submitForApproval(request);
 
         // Cache the individual request
         await this.runtime.cacheManager.set(

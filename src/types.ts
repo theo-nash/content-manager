@@ -306,6 +306,8 @@ export interface AudienceInsight {
     confidence: number;
 }
 
+export type ApprovalContent = MasterPlan | MicroPlan | ContentPiece;
+
 export interface AdapterRegistration {
     adapter: PlatformAdapter;
     platform: Platform;
@@ -313,15 +315,16 @@ export interface AdapterRegistration {
     priority?: number;
 }
 
-export interface ApprovalRequest<T> {
+export interface ApprovalRequest<ApprovalContent> {
     id: UUID;
-    content: T;
+    content: ApprovalContent;
     platform: string;
     requesterId: string;
     timestamp: Date;
     status: ApprovalStatus;
     comments?: string;
     approverId?: string;
+    platformId?: string;
     callback: Function;
 }
 

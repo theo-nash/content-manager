@@ -1,5 +1,6 @@
 import { Action, HandlerCallback, IAgentRuntime, Memory, State, UUID, stringToUuid, elizaLogger } from "@elizaos/core";
 import { ContentPiece, ContentStatus, Platform } from "../types";
+import { ContentDeliveryService, ContentManagerService } from "../services";
 
 export const ScheduleContentAction: Action = {
     name: "SCHEDULE_CONTENT",
@@ -79,7 +80,9 @@ export const ScheduleContentAction: Action = {
 
         try {
             // Get the content delivery service
-            const contentDeliveryService = runtime.getService<ContentDeliveryService>("content-delivery");
+            const contentManager = await runtime.getService<ContentManagerService>(ContentManagerService.serviceType);
+            const contentDeliveryService = await contentManager.getMicroService<ContentDeliveryService>("content-delivery");
+
             if (!contentDeliveryService) {
                 throw new Error("Content delivery service not available");
             }
@@ -97,8 +100,7 @@ export const ScheduleContentAction: Action = {
 
             // Schedule the content
             const result = await contentDeliveryService.postContent(contentPiece, {
-                scheduledTime,
-                platform
+                scheduledTime
             });
 
             // Inform the user

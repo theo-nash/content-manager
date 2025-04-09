@@ -4,13 +4,13 @@ import {
     HandlerCallback,
     IAgentRuntime,
     Memory,
-    ModelType,
+    ModelClass,
     State,
     UUID
 } from "@elizaos/core";
 import { PlanningService } from "../services/planningService";
-import * as db from "../database";
 import { Timeframe } from "../types";
+import { ContentManagerService } from "../services";
 
 export const generateMicroPlanAction: Action = {
     name: "GENERATE_MICRO_PLAN",
@@ -45,7 +45,13 @@ export const generateMicroPlanAction: Action = {
 
         try {
             // Get active master plans
-            const planningService = new PlanningService(runtime);
+            const contentManager = await runtime.getService<ContentManagerService>(ContentManagerService.serviceType);
+            const planningService = await contentManager.getMicroService<PlanningService>("content-planning");
+
+            if (!planningService) {
+                throw new Error("Content planning service not available");
+            }
+
             const activePlans = await planningService.getActiveMasterPlans();
 
             if (activePlans.length === 0) {
@@ -122,11 +128,11 @@ export const generateMicroPlanAction: Action = {
     examples: [
         [
             {
-                name: "{{name1}}",
+                user: "{{name1}}",
                 content: { text: "Can you create a weekly content plan for my blog?" }
             },
             {
-                name: "{{name2}}",
+                user: "{{name2}}",
                 content: {
                     text: "I'll generate a detailed micro content plan for you. Let me check if we have an approved master plan to work from...",
                     thought: "The user wants me to create a micro content plan. I need to check if there's an approved master plan first, then generate the micro plan based on it.",

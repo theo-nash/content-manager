@@ -59,6 +59,7 @@ export const approvalConfigSchema = z.object({
     APPROVAL_ENABLED: z.boolean().default(true),
     APPROVAL_AUTOAPPROVE: z.boolean().default(false),
     AUTO_REJECT_DAYS: z.number().default(7),
+    APPROVAL_CHECK_INTERVAL: z.number().int().default(1),
     APPROVAL_CHANNEL: z.string().default(DEFAULT_APPROVAL_CHANNEL),
     NOTIFICATION_CHANNEL: z.string().default(DEFAULT_NOTIFICATION_CHANNEL),
 });
@@ -90,6 +91,13 @@ export async function validateApprovalConfig(
                 safeParseInt(
                     runtime.getSetting("AUTO_REJECT_DAYS") ||
                     process.env.AUTO_REJECT_DAYS, 7
+                ),
+
+            APPROVAL_CHECK_INTERVAL:
+                safeParseInt(
+                    runtime.getSetting("APPROVAL_CHECK_INTERVAL") ||
+                    process.env.APPROVAL_CHECK_INTERVAL,
+                    1 // 1 min
                 ),
 
             APPROVAL_CHANNEL:

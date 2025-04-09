@@ -221,7 +221,7 @@ export class PlanningService {
         }
     }
 
-    async createMasterPlan(baseInfo: Partial<MasterPlan>): Promise<MasterPlan> {
+    async createMasterPlan(baseInfo: string): Promise<MasterPlan> {
         // Generate master plan using LLM if only partial info provided
         const masterPlan = await this.generateMasterPlan(baseInfo);
 
@@ -260,10 +260,10 @@ export class PlanningService {
         return plans.filter(plan => plan.approvalStatus === ApprovalStatus.APPROVED);
     }
 
-    private async generateMasterPlan(baseInfo: Partial<MasterPlan>): Promise<MasterPlan> {
+    private async generateMasterPlan(baseInfo: string): Promise<MasterPlan> {
         // Create a prompt for the LLM
         const prompt = `Create a comprehensive content master plan based on the following information:
-${JSON.stringify(baseInfo, null, 2)}
+${baseInfo}
 
 The plan should include:
 1. Clear goals with KPIs and completion criteria
@@ -346,8 +346,8 @@ Format your response as a JSON object with the following structure:
 
             // Create the master plan
             const masterPlan: MasterPlan = {
-                id: baseInfo.id || crypto.randomUUID() as UUID,
-                title: parsedPlan.title || baseInfo.title || "Content Master Plan",
+                id: crypto.randomUUID() as UUID,
+                title: parsedPlan.title || "Content Master Plan",
                 goals: this.processGoals(parsedPlan.goals || []),
                 contentMix: this.processContentMix(parsedPlan.contentMix || []),
                 audience: this.processAudience(parsedPlan.audience || []),
@@ -370,8 +370,8 @@ Format your response as a JSON object with the following structure:
             // Create a minimal master plan with defaults
             const now = new Date();
             return {
-                id: baseInfo.id || crypto.randomUUID() as UUID,
-                title: baseInfo.title || "Content Master Plan",
+                id: crypto.randomUUID() as UUID,
+                title: "Content Master Plan",
                 goals: [],
                 contentMix: [],
                 audience: [],
@@ -613,7 +613,7 @@ Respond with the JSON array only. No explanations or other text.`;
 
     async submitPlanForApproval<T extends MasterPlan | MicroPlan>(plan: T): Promise<ApprovalRequest<T>> {
         // Get approval microservice
-        const _c = await this.runtime.getService(ContentManagerService.serviceType) as ContentManagerService;
+        const _c = await this.runtime.getService<ContentManagerService>(ContentManagerService.serviceType);
         const approvalService = await _c.getMicroService<ContentApprovalService>("content-approval");
 
         const approvalRequest = await approvalService.sendForApproval<T>(plan, (request) => this.updatePlanStatus(request));
