@@ -31,8 +31,8 @@
     "vitest": "1.6.1"
   },
   "scripts": {
-    "build": "tsup --format esm --dts",
-    "dev": "tsup --format esm --dts --watch",
+    "build": "tsup --format esm --dts && mkdir -p dist/plans && cp -r plans/* dist/plans/",
+    "dev": "tsup --format esm --dts --watch && mkdir -p dist/plans && cp -r plans/* dist/plans/",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage"
   },
