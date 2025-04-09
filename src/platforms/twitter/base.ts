@@ -94,7 +94,6 @@ export class ClientBase extends EventEmitter {
     twitterClient: Scraper;
     runtime: IAgentRuntime;
     twitterConfig: TwitterConfig;
-    directions: string;
     lastCheckedTweetId: bigint | null = null;
     imageDescriptionService: IImageDescriptionService;
     temperature = 0.5;
@@ -248,12 +247,6 @@ export class ClientBase extends EventEmitter {
             this.twitterClient = new Scraper();
             ClientBase._twitterClients[username] = this.twitterClient;
         }
-
-        this.directions =
-            "- " +
-            this.runtime.character.style.all.join("\n- ") +
-            "- " +
-            this.runtime.character.style.post.join();
     }
 
     async init() {
@@ -283,16 +276,16 @@ export class ClientBase extends EventEmitter {
         const cachedCookies = await this.getCachedCookies(username) || createTwitterCookies(authToken, ct0, guestId);
 
         if (cachedCookies) {
-            elizaLogger.info("Using cached cookies");
+            elizaLogger.info("[TwitterClient] Using cached cookies");
             await this.setCookiesFromArray(cachedCookies);
         }
 
-        elizaLogger.log("Waiting for Twitter login");
+        elizaLogger.log("[TwitterClient] Waiting for Twitter login");
         while (retries > 0) {
             try {
                 if (await this.twitterClient.isLoggedIn()) {
                     // cookies are valid, no login required
-                    elizaLogger.info("Successfully logged in.");
+                    elizaLogger.info("[TwitterClient] Successfully logged in.");
                     break;
                 } else {
                     await this.twitterClient.login(
@@ -313,19 +306,19 @@ export class ClientBase extends EventEmitter {
                     }
                 }
             } catch (error) {
-                elizaLogger.error(`Login attempt failed: ${error.message}`);
+                elizaLogger.error(`[TwitterClient] Login attempt failed: ${error.message}`);
             }
 
             retries--;
             elizaLogger.error(
-                `Failed to login to Twitter. Retrying... (${retries} attempts left)`
+                `[TwitterClient] Failed to login to Twitter. Retrying... (${retries} attempts left)`
             );
 
             if (retries === 0) {
                 elizaLogger.error(
-                    "Max retries reached. Exiting login process."
+                    "[TwitterClient] Max retries reached. Exiting login process."
                 );
-                throw new Error("Twitter login failed after maximum retries.");
+                throw new Error("[TwitterClient] Twitter login failed after maximum retries.");
             }
 
             await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -334,9 +327,9 @@ export class ClientBase extends EventEmitter {
         this.profile = await this.fetchProfile(username);
 
         if (this.profile) {
-            elizaLogger.log("Twitter user ID:", this.profile.id);
+            elizaLogger.log("[TwitterClient] Twitter user ID:", this.profile.id);
             elizaLogger.log(
-                "Twitter loaded:",
+                "[TwitterClient] Twitter loaded:",
                 JSON.stringify(this.profile, null, 10)
             );
             // Store profile info for use in responses
@@ -356,7 +349,7 @@ export class ClientBase extends EventEmitter {
     }
 
     async fetchOwnPosts(count: number): Promise<Tweet[]> {
-        elizaLogger.debug("fetching own posts");
+        elizaLogger.debug("[TwitterClient] fetching own posts");
         const homeTimeline = await this.twitterClient.getUserTweets(
             this.profile.id,
             count
@@ -372,7 +365,7 @@ export class ClientBase extends EventEmitter {
         count: number,
         following?: boolean
     ): Promise<Tweet[]> {
-        elizaLogger.debug("fetching home timeline");
+        elizaLogger.debug("[TwitterClient] fetching home timeline");
         const homeTimeline = following
             ? await this.twitterClient.fetchFollowingTimeline(count, [])
             : await this.twitterClient.fetchHomeTimeline(count, []);
@@ -387,7 +380,7 @@ export class ClientBase extends EventEmitter {
     }
 
     async fetchTimelineForActions(count: number): Promise<Tweet[]> {
-        elizaLogger.debug("fetching timeline for actions");
+        elizaLogger.debug("[TwitterClient] fetching timeline for actions");
 
         const agentUsername = this.twitterConfig.TWITTER_USERNAME;
 
@@ -435,17 +428,17 @@ export class ClientBase extends EventEmitter {
                 );
                 return (result ?? { tweets: [] }) as QueryTweetsResponse;
             } catch (error) {
-                elizaLogger.error("Error fetching search tweets:", error);
+                elizaLogger.error("[TwitterClient] Error fetching search tweets:", error);
                 return { tweets: [] };
             }
         } catch (error) {
-            elizaLogger.error("Error fetching search tweets:", error);
+            elizaLogger.error("[TwitterClient] Error fetching search tweets:", error);
             return { tweets: [] };
         }
     }
 
     private async populateTimeline() {
-        elizaLogger.debug("populating timeline...");
+        elizaLogger.debug("[TwitterClient] populating timeline...");
 
         const cachedTimeline = await this.getCachedTimeline();
 
@@ -462,8 +455,6 @@ export class ClientBase extends EventEmitter {
                         )
                     ),
                 });
-
-            //TODO: load tweets not in cache?
 
             // Create a Set to store the IDs of existing memories
             const existingMemoryIds = new Set(
@@ -494,7 +485,7 @@ export class ClientBase extends EventEmitter {
 
                 // Save the missing tweets as memories
                 for (const tweet of tweetsToSave) {
-                    elizaLogger.log("Saving Tweet", tweet.id);
+                    elizaLogger.log("[TwitterClient] Saving Tweet", tweet.id);
 
                     const roomId = stringToUuid(
                         tweet.conversationId + "-" + this.runtime.agentId
@@ -536,7 +527,7 @@ export class ClientBase extends EventEmitter {
                             : undefined,
                     } as Content;
 
-                    elizaLogger.log("Creating memory for tweet", tweet.id);
+                    elizaLogger.log("[TwitterClient] Creating memory for tweet", tweet.id);
 
                     // check if it already exists
                     const memory =
@@ -546,7 +537,7 @@ export class ClientBase extends EventEmitter {
 
                     if (memory) {
                         elizaLogger.log(
-                            "Memory already exists, skipping timeline population"
+                            "[TwitterClient] Memory already exists, skipping timeline population"
                         );
                         break;
                     }
@@ -565,7 +556,7 @@ export class ClientBase extends EventEmitter {
                 }
 
                 elizaLogger.log(
-                    `Populated ${tweetsToSave.length} missing tweets from the cache.`
+                    `[TwitterClient] Populated ${tweetsToSave.length} missing tweets from the cache.`
                 );
                 return;
             }
@@ -628,7 +619,7 @@ export class ClientBase extends EventEmitter {
 
         // Save the new tweets as memories
         for (const tweet of tweetsToSave) {
-            elizaLogger.log("Saving Tweet", tweet.id);
+            elizaLogger.log("[TwitterClient] Saving Tweet", tweet.id);
 
             const roomId = stringToUuid(
                 tweet.conversationId + "-" + this.runtime.agentId
@@ -707,7 +698,7 @@ export class ClientBase extends EventEmitter {
                 recentMessage.length > 0 &&
                 recentMessage[0].content === message.content
             ) {
-                elizaLogger.debug("Message already saved", recentMessage[0].id);
+                elizaLogger.debug("[TwitterClient] Message already saved", recentMessage[0].id);
             } else {
                 await this.runtime.messageManager.createMemory({
                     ...message,

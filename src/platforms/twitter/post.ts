@@ -9,40 +9,18 @@ import {
 import { elizaLogger } from "@elizaos/core";
 import type { ClientBase } from "./base.ts";
 import { DEFAULT_MAX_TWEET_LENGTH } from "../../environment.ts";
-import {
-    Client,
-    Events,
-    GatewayIntentBits,
-    TextChannel,
-    Partials,
-} from "discord.js";
+
 import { MediaData, TweetThreadItem } from "./types.ts";
-import { v4 as uuidv4 } from 'uuid';
-import type { Memory } from "@elizaos/core";
 
 const MAX_TIMELINES_TO_FETCH = 15;
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-interface PendingTweet {
-    tweetTextForPosting: string;
-    roomId: UUID;
-    rawTweetContent: string;
-    taskId: string;
-    timestamp: number;
-}
-
-type PendingTweetApprovalStatus = "PENDING" | "APPROVED" | "REJECTED";
 
 export class TwitterPostClient {
     client: ClientBase;
     runtime: IAgentRuntime;
     twitterUsername: string;
     isDryRun: boolean;
-    private discordClientForApproval: Client;
     approvalRequired = false;
-    private discordApprovalChannelId: string;
-    private approvalCheckInterval: number;
-    approvalProvider: string;
 
     constructor(client: ClientBase, runtime: IAgentRuntime) {
         elizaLogger.debug("🔍 TwitterPostClient constructor start");
@@ -59,8 +37,6 @@ export class TwitterPostClient {
         if (this.isDryRun) {
             elizaLogger.log("Twitter client initialized in dry run mode - no actual tweets will be posted");
         }
-
-        elizaLogger.debug(`🔍 TwitterPostClient constructor complete. Final approval provider: "${this.approvalProvider}", approval required: ${this.approvalRequired}`);
     }
 
     createTweetObject(
