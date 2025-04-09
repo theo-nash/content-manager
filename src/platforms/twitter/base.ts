@@ -370,7 +370,7 @@ export class ClientBase extends EventEmitter {
             ? await this.twitterClient.fetchFollowingTimeline(count, [])
             : await this.twitterClient.fetchHomeTimeline(count, []);
 
-        elizaLogger.debug(homeTimeline, 'Timeline debug', { depth: Number.POSITIVE_INFINITY });
+        // elizaLogger.debug(homeTimeline, 'Timeline debug', { depth: Number.POSITIVE_INFINITY });
         const processedTimeline = homeTimeline
             .filter((t) => t.__typename !== "TweetWithVisibilityResults") // what's this about?
             .map((tweet) => this.parseTweet(tweet));
@@ -606,9 +606,9 @@ export class ClientBase extends EventEmitter {
                 )
         );
 
-        elizaLogger.debug({
-            processingTweets: tweetsToSave.map((tweet) => tweet.id).join(","),
-        });
+        // elizaLogger.debug({
+        //     processingTweets: tweetsToSave.map((tweet) => tweet.id).join(","),
+        // });
 
         await this.runtime.ensureUserExists(
             this.runtime.agentId,

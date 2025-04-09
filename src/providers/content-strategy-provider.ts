@@ -1,6 +1,6 @@
 // src/providers/content-strategy-provider.ts
 import { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { ContentAgentMemoryManager, TABLE_NAME, ROOM_IDS } from "../managers/contentMemory";
+import { TABLE_NAME, ROOM_IDS } from "../managers/contentMemory";
 import { ApprovalStatus, MasterPlan, MicroPlan } from "../types";
 
 export const contentStrategyProvider: Provider = {

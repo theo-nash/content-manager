@@ -32,7 +32,7 @@ export class NewsService {
     }
 
     async fetchRecentNews(): Promise<NewsEvent[]> {
-        return;
+        return [];
     }
 
     async fetchTrendingTopics(): Promise<TrendingTopic[]> {
