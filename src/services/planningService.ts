@@ -642,7 +642,7 @@ Respond with the JSON array only. No explanations or other text.`;
                     piece.scheduledDate = new Date();
                 }
 
-                await deliveryService.postContent(piece, { scheduledTime: piece.scheduledDate });
+                await deliveryService.submitContent(piece, { scheduledTime: piece.scheduledDate });
             }
         }
     }
