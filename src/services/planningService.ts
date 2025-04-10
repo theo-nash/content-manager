@@ -24,6 +24,7 @@ import { ContentManagerService } from "./contentManager";
 import { ContentApprovalService } from "./contentApproval";
 import { ContentPlanningConfig } from "../environment";
 import { fileURLToPath } from 'url';
+import { ContentDeliveryService } from "./contentDelivery";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -253,10 +254,6 @@ export class PlanningService {
         await this.savePlanToFile(microPlan);
 
         return microPlan;
-    }
-
-    async getMasterPlan(id: UUID): Promise<MasterPlan | null> {
-        return await this.memoryManager.getMasterPlanById(id);
     }
 
     async getActiveMasterPlans(): Promise<MasterPlan[]> {
@@ -589,7 +586,16 @@ Respond with the JSON array only. No explanations or other text.`;
         return this.createMicroPlan(masterPlanId, this.config.MICRO_PLAN_TIMEFRAME, startDate);
     }
 
-    async updatePlanStatus<T extends MasterPlan | MicroPlan>(approvalRequest: ApprovalRequest<T>): Promise<void> {
+    async submitPlanForApproval<T extends MasterPlan | MicroPlan>(plan: T): Promise<ApprovalRequest<T>> {
+        // Get approval microservice
+        const _c = await this.runtime.getService<ContentManagerService>(ContentManagerService.serviceType);
+        const approvalService = await _c.getMicroService<ContentApprovalService>("content-approval");
+
+        const approvalRequest = await approvalService.sendForApproval<T>(plan, (request) => this.handleStatusUpdate(request));
+        return approvalRequest;
+    }
+
+    async handleStatusUpdate<T extends MasterPlan | MicroPlan>(approvalRequest: ApprovalRequest<T>): Promise<void> {
         const memory = await this.memoryManager.getMemoryById(approvalRequest.content.id);
 
         if (!memory) {
@@ -611,18 +617,34 @@ Respond with the JSON array only. No explanations or other text.`;
             }
         };
 
+        // Handle approved plan
+        if (approvalRequest.status === ApprovalStatus.APPROVED) {
+            await this.handleApprovedPlan(plan);
+        } else if (approvalRequest.status === ApprovalStatus.REJECTED) {
+            // Handle rejected plan
+            elizaLogger.log(`[PlanningService] Plan ${plan.id} rejected`);
+        }
+
         // Store updated plan
         await this.memoryManager.updateMemory(newMemory);
         await this.savePlanToFile(plan);
     }
 
-    async submitPlanForApproval<T extends MasterPlan | MicroPlan>(plan: T): Promise<ApprovalRequest<T>> {
-        // Get approval microservice
-        const _c = await this.runtime.getService<ContentManagerService>(ContentManagerService.serviceType);
-        const approvalService = await _c.getMicroService<ContentApprovalService>("content-approval");
+    private async handleApprovedPlan(plan: MasterPlan | MicroPlan): Promise<void> {
+        // If microplan, schedule content pieces in delivery service
+        if (plan.approvalStatus === ApprovalStatus.APPROVED && "contentPieces" in plan) {
+            const contentManager = await this.runtime.getService<ContentManagerService>(ContentManagerService.serviceType);
+            const deliveryService = await contentManager.getMicroService<ContentDeliveryService>("content-delivery");
 
-        const approvalRequest = await approvalService.sendForApproval<T>(plan, (request) => this.updatePlanStatus(request));
-        return approvalRequest;
+            for (const piece of plan.contentPieces) {
+                // Ensure schedule date is in the future
+                if (piece.scheduledDate < new Date()) {
+                    piece.scheduledDate = new Date();
+                }
+
+                await deliveryService.postContent(piece, { scheduledTime: piece.scheduledDate });
+            }
+        }
     }
 
     private startPlanCreationLoop(): void {

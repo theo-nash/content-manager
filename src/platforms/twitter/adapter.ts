@@ -18,24 +18,24 @@ export class TwitterAdapter implements PlatformAdapter {
 
     async configure(config: PlatformAdapterConfig): Promise<void> {
         // Implement Twitter-specific configuration logic
-        console.log("[TwitterAdapter] Configuring Twitter adapter with:", config);
+        elizaLogger.log("[TwitterAdapter] Configuring Twitter adapter with:", config);
     }
 
     async initialize(runtime: IAgentRuntime): Promise<void> {
         // Implement Twitter-specific initialization logic
-        console.log("[TwitterAdapter] Initializing Twitter adapter");
+        elizaLogger.log("[TwitterAdapter] Initializing Twitter adapter");
 
         this.runtime = runtime;
 
         const config = await validateTwitterConfig(runtime);
         const client = new ClientBase(runtime, config);
         await client.init();
-        console.log("[TwitterAdapter] Twitter client initialized");
+        elizaLogger.log("[TwitterAdapter] Twitter client initialized");
 
         // Initialize posting client
         this.postClient = new TwitterPostClient(client, runtime);
 
-        console.log("[TwitterAdapter] Twitter post client started");
+        elizaLogger.log("[TwitterAdapter] Twitter post client started");
     }
 
     async validateContent(content: ContentPiece): Promise<ContentValidationResult> {

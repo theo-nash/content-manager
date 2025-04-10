@@ -106,6 +106,7 @@ export interface ContentPiece {
     generatedContent?: any;
     formattedContent?: any;
     platformId?: string; // optional, for tracking on specific platforms
+    publishedUrl?: string; // optional, for tracking on specific platforms
     medaiData?: any; // optional, for media attachments
 }
 

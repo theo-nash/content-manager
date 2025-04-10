@@ -5,7 +5,8 @@ import {
     PublishResult,
     ContentStatus,
     ApprovalStatus,
-    ApprovalRequest
+    ApprovalRequest,
+    ContentValidationResult
 } from "../types";
 import { ContentApprovalService } from "./contentApproval";
 import { ContentAgentMemoryManager } from "../managers/contentMemory";
@@ -18,11 +19,14 @@ export interface ContentDeliveryOptions {
     formatOptions?: Record<string, any>;
     scheduledTime?: Date;
     skipApproval?: boolean;
+    approvalOffset?: number; // milliseconds before scheduled time to request approval
 }
 
 export interface ContentDeliveryResult extends PublishResult {
     contentId: UUID;
     platform: Platform;
+    success: boolean;
+    timestamp: Date;
     attempts?: number;
     validationErrors?: string[];
 }
@@ -31,6 +35,9 @@ interface ScheduledCacheEntry {
     contentPiece: ContentPiece;
     options: ContentDeliveryOptions;
     createdAt: Date;
+    approvalStatus?: ApprovalStatus;
+    approvalId?: UUID;
+    formattedContent?: ContentPiece;
 }
 
 export class ContentDeliveryService {
@@ -54,6 +61,7 @@ export class ContentDeliveryService {
         maxRetries: 3,
         validateBeforePublish: true,
         skipApproval: false,
+        approvalOffset: 3 * 60 * 60 * 1000, // 3 hours
     };
 
     async initialize(runtime: IAgentRuntime, memoryManager: ContentAgentMemoryManager, approvalService?: ContentApprovalService, adapterProvider?: AdapterProvider): Promise<void> {
@@ -84,6 +92,85 @@ export class ContentDeliveryService {
     }
 
     /**
+     * Manages post content to the appropriate platforms and schedules if needed
+     */
+    async submitContent(
+        contentPiece: ContentPiece,
+        options: ContentDeliveryOptions = {}
+    ): Promise<ContentDeliveryResult> {
+        // Ensure piece hasn't been posted already
+        const contentMemory = await this.memoryManager.getContentPieceById(contentPiece.id);
+
+        if (contentPiece.status === ContentStatus.PUBLISHED || (contentMemory && contentMemory.status)) {
+            elizaLogger.warn(`[ContentDeliveryService] Content already published: ${contentPiece.id}`);
+            return {
+                contentId: contentPiece.id,
+                platform: contentPiece.platform,
+                success: false,
+                timestamp: new Date(),
+                error: "Content already published"
+            };
+        }
+        // Merge default options with provided options`
+        const mergedOptions = { ...this.defaultOptions, ...options };
+
+        // Format and validate content
+        const formattedContent = await this.formatContent(contentPiece, mergedOptions);
+        const validationResult = await this.validateContent(formattedContent, mergedOptions);
+
+        if (!validationResult.isValid) {
+            let validationErrors = validationResult.errors || [];
+            elizaLogger.error(`[ContentDeliveryService] Content validation failed: ${validationErrors.join(", ")}`);
+            return {
+                contentId: contentPiece.id,
+                platform: contentPiece.platform,
+                success: false,
+                timestamp: new Date(),
+                error: `Content validation failed: ${validationErrors.join(", ")}`,
+                validationErrors
+            };
+        }
+
+        // Check for scheduled delivery
+        if (mergedOptions.scheduledTime && mergedOptions.scheduledTime > new Date()) {
+            elizaLogger.log(`[ContentDeliveryService] Scheduling content for delivery at ${mergedOptions.scheduledTime.toISOString()}: ${contentPiece.id}`);
+            return this.scheduleContentDelivery(formattedContent, mergedOptions);
+        }
+
+        // Check approvals
+        let approval: ApprovalRequest<ContentPiece> | undefined;
+
+        if (this.approvalService && !mergedOptions.skipApproval) {
+            elizaLogger.debug(`[ContentDeliveryService] Sending content for approval: ${contentPiece.id}`);
+            approval = await this.submitForApproval(formattedContent, mergedOptions);
+        } else {
+            elizaLogger.debug(`[ContentDeliveryService] No approval required for content: ${contentPiece.id}`);
+            approval = {
+                id: stringToUuid(`${contentPiece.id}-approval`),
+                content: formattedContent,
+                platform: contentPiece.platform,
+                requesterId: this.runtime.agentId,
+                timestamp: new Date(),
+                status: ApprovalStatus.APPROVED,
+                comments: "Content approved automatically",
+                callback: this.publishContent
+            }
+        }
+
+        if (approval.status === ApprovalStatus.APPROVED) {
+            return await this.publishContent(approval)
+        } else {
+            return {
+                contentId: contentPiece.id,
+                platform: contentPiece.platform,
+                success: true,
+                timestamp: new Date(),
+                error: "Content pending approval"
+            };
+        }
+    }
+
+    /**
      * Posts content to the appropriate platform
      */
     async postContent(
@@ -109,7 +196,7 @@ export class ContentDeliveryService {
 
         elizaLogger.debug(`[ContentDeliveryService] Posting content: ${contentPiece.id} to ${contentPiece.platform}`);
 
-        if (adapter) {
+        if (!adapter) {
             elizaLogger.error(`[ContentDeliveryService] No enabled adapter for platform: ${contentPiece.platform}`);
 
             return {
@@ -201,6 +288,58 @@ export class ContentDeliveryService {
         }
     }
 
+    private async validateContent(
+        contentPiece: ContentPiece,
+        options: ContentDeliveryOptions
+    ): Promise<ContentValidationResult> {
+        if (!options.validateBeforePublish) {
+            return { isValid: true, errors: [] };
+        }
+
+        const adapter = this.adapterProvider.getAdapter(contentPiece.platform);
+        if (!adapter) {
+            throw new Error(`No enabled adapter for platform: ${contentPiece.platform}`);
+        }
+
+        return await adapter.validateContent(contentPiece);
+    }
+
+    private async formatContent(
+        contentPiece: ContentPiece,
+        options: ContentDeliveryOptions
+    ): Promise<ContentPiece> {
+        const adapter = this.adapterProvider.getAdapter(contentPiece.platform);
+        if (!adapter) {
+            throw new Error(`No enabled adapter for platform: ${contentPiece.platform}`);
+        }
+
+        return await adapter.formatContent(contentPiece);
+    }
+
+    private async submitForApproval(
+        contentPiece: ContentPiece,
+        options: ContentDeliveryOptions
+    ): Promise<ApprovalRequest<ContentPiece>> {
+        if (this.approvalService && !options.skipApproval) {
+            elizaLogger.debug(`[ContentDeliveryService] Sending content for approval: ${contentPiece.id}`);
+
+            return await this.approvalService.sendForApproval<ContentPiece>(contentPiece, (request) => this.publishContent(request))
+
+        } else {
+            const approvalResult: ApprovalRequest<ContentPiece> = {
+                id: stringToUuid(`${contentPiece.id}-approval`),
+                content: contentPiece,
+                platform: contentPiece.platform,
+                requesterId: this.runtime.agentId,
+                timestamp: new Date(),
+                status: ApprovalStatus.APPROVED,
+                comments: "Content approved automatically",
+                callback: this.publishContent
+            }
+            return approvalResult;
+        }
+    }
+
     async publishContent(approvalResult: ApprovalRequest<ContentPiece>): Promise<ContentDeliveryResult> {
         const contentPiece = approvalResult.content;
         let attempts = 0;
@@ -239,6 +378,8 @@ export class ContentDeliveryService {
                     if (publishResult.success) {
                         // Update content status if published successfully
                         contentPiece.status = ContentStatus.PUBLISHED;
+                        contentPiece.platformId = publishResult.platformId || null;
+                        contentPiece.publishedUrl = publishResult.publishedUrl || null;
 
                         // Store the updated content piece
                         this.memoryManager.createContentPiece(contentPiece);
@@ -343,6 +484,12 @@ export class ContentDeliveryService {
                 // Clean up cache
                 await this.runtime.cacheManager.delete(cacheKey);
                 this.scheduledDeliveries.delete(scheduledId);
+
+                // Also update the keys list
+                const cacheKeys = await this.runtime.cacheManager.get<string[]>("contentDelivery/scheduledKeys") || [];
+                const updatedKeys = cacheKeys.filter(key => key !== cacheKey);
+                await this.runtime.cacheManager.set("contentDelivery/scheduledKeys", updatedKeys);
+
             } catch (error) {
                 elizaLogger.error(`[ContentDeliveryService] Error executing scheduled delivery: ${error}`);
             }
@@ -356,8 +503,6 @@ export class ContentDeliveryService {
             platform: contentPiece.platform,
             success: true,
             timestamp: now,
-            publishedUrl: null,
-            publishedId: null,
             error: `Content scheduled for delivery at ${scheduledTime.toISOString()}`
         };
     }
