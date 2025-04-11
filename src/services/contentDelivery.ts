@@ -11,6 +11,7 @@ import {
 import { ContentApprovalService } from "./contentApproval";
 import { ContentAgentMemoryManager } from "../managers/contentMemory";
 import { AdapterProvider } from "./adapterService";
+import { ContentManagerService } from "./contentManager";
 
 export interface ContentDeliveryOptions {
     retry?: boolean;
@@ -46,10 +47,11 @@ export class ContentDeliveryService {
     capabilityDescription = "Provides a platform-specific adapter for content management";
     private approvalService: ContentApprovalService | undefined;
     private scheduledDeliveries: Map<string, NodeJS.Timeout> = new Map();
-    private runtime: IAgentRuntime;
-    private memoryManager: ContentAgentMemoryManager;
-    private adapterProvider: AdapterProvider;
+    private contentManager: ContentManagerService | null = null;
+    private memoryManager: ContentAgentMemoryManager | null = null;
+    private adapterProvider: AdapterProvider | null = null;
     private maintenanceInterval: NodeJS.Timeout;
+    private isInitialized: boolean = false;
 
     static get serviceType(): ServiceType {
         return "content-delivery" as ServiceType;
@@ -59,6 +61,8 @@ export class ContentDeliveryService {
         return ContentDeliveryService.serviceType;
     }
 
+    constructor(private runtime: IAgentRuntime) { }
+
     private defaultOptions: ContentDeliveryOptions = {
         retry: true,
         maxRetries: 3,
@@ -67,12 +71,16 @@ export class ContentDeliveryService {
         approvalOffset: 3 * 60 * 60 * 1000, // 3 hours
     };
 
-    async initialize(runtime: IAgentRuntime, memoryManager: ContentAgentMemoryManager, approvalService?: ContentApprovalService, adapterProvider?: AdapterProvider): Promise<void> {
+    async initialize(): Promise<void> {
+        if (this.isInitialized) {
+            elizaLogger.debug("[ContentDeliveryService] ContentDeliveryService is already initialized");
+            return;
+        }
+
         elizaLogger.debug("[ContentDeliveryService] Initializing ContentDeliveryService");
-        this.runtime = runtime;
-        this.memoryManager = memoryManager;
-        this.approvalService = approvalService;
-        this.adapterProvider = adapterProvider;
+
+        // Initialize required services
+        await this.initializeServices();
 
         // Check platform connections
         const statuses = await this.checkPlatformConnections();
@@ -84,9 +92,6 @@ export class ContentDeliveryService {
             }
         }
 
-        // Initialize content approval service
-        this.approvalService = approvalService;
-
         // Load any scheduled deliveries from cache
         await this.loadScheduledDeliveries();
 
@@ -97,6 +102,45 @@ export class ContentDeliveryService {
         this.maintenanceInterval = setInterval(() => {
             this.performMaintenanceCleanup();
         }, 2 * 60 * 60 * 1000);
+
+        this.isInitialized = true;
+    }
+
+    private async initializeServices(): Promise<void> {
+        try {
+            this.contentManager = await this.runtime.getService<ContentManagerService>(ContentManagerService.serviceType);
+            if (!this.contentManager) {
+                throw new Error("ContentManagerService not available");
+            }
+
+            // Get approval service
+            this.approvalService = await this.contentManager.getMicroService<ContentApprovalService>("content-approval");
+
+            if (!this.approvalService) {
+                elizaLogger.warn("[PlanningService] ContentApprovalService not available, approval flow will be limited");
+            }
+
+            // Get delivery service
+            this.memoryManager = await this.contentManager.getMicroService<ContentAgentMemoryManager>("content-memory");
+
+            if (!this.memoryManager) {
+                elizaLogger.warn("[PlanningService] MemoryManagerService not available, content features will be limited");
+                return;
+            }
+
+            this.adapterProvider = await this.contentManager.getMicroService<AdapterProvider>("adapter-provider");
+
+            if (!this.adapterProvider) {
+                elizaLogger.warn("[PlanningService] AdapterProvider not available, content features will be limited");
+                return;
+            }
+
+            elizaLogger.debug("[PlanningService] AdapterProvider initialized successfully");
+
+        } catch (error) {
+            elizaLogger.error("[PlanningService] Error initializing services:", error);
+            throw new Error(`Service initialization failed: ${error.message}`);
+        }
     }
 
     /**

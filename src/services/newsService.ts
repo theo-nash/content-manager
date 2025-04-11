@@ -3,17 +3,27 @@ import { UUID, IAgentRuntime, elizaLogger } from "@elizaos/core";
 import { NewsEvent, TrendingTopic, ProcessingStatus } from "../types";
 import { AdapterProvider } from "./adapterService";
 import { ContentAgentMemoryManager } from "../managers/contentMemory";
+import { ContentManagerService } from "./contentManager";
 
 export class NewsService {
     private adapterProvider: AdapterProvider;
+    private isInitialized: boolean = false;
+    private memoryManager: ContentAgentMemoryManager | null = null;
+    private contentManager: ContentManagerService | null = null;
 
-    constructor(private runtime: IAgentRuntime, private memoryManager: ContentAgentMemoryManager) { }
+    constructor(private runtime: IAgentRuntime) { }
 
-    async initialize(adapterProvider?: AdapterProvider) {
+    async initialize() {
+        if (this.isInitialized) {
+            elizaLogger.debug("[NewsService] NewsService is already initialized");
+            return;
+        }
+
         // Initialize the service
         elizaLogger.info("[NewsService] Initializing NewsService");
 
-        this.adapterProvider = adapterProvider;
+        // Initialize required services
+        await this.initializeServices();
 
         // Fetch recent news events
         const recentNews = await this.fetchRecentNews();
@@ -22,13 +32,41 @@ export class NewsService {
         }
 
         // Fetch trending topics
-        const trendingTopics = await this.fetchTrendingTopics();
-        if (trendingTopics.length > 0) {
-            elizaLogger.info("[NewsService] Fetched trending topics:", trendingTopics);
-        }
+        await this.fetchTrendingTopics();
 
         // Start monitoring for news events
         this.startNewsMonitoring();
+        this.isInitialized = true;
+    }
+
+    private async initializeServices(): Promise<void> {
+        try {
+            this.contentManager = await this.runtime.getService<ContentManagerService>(ContentManagerService.serviceType);
+            if (!this.contentManager) {
+                throw new Error("[NewsService] ContentManagerService not available");
+            }
+
+            // Get delivery service
+            this.memoryManager = await this.contentManager.getMicroService<ContentAgentMemoryManager>("content-memory");
+
+            if (!this.memoryManager) {
+                elizaLogger.warn("[NewsService] MemoryManagerService not available, content features will be limited");
+                return;
+            }
+
+            this.adapterProvider = await this.contentManager.getMicroService<AdapterProvider>("adapter-provider");
+
+            if (!this.adapterProvider) {
+                elizaLogger.warn("[NewsService] AdapterProvider not available, content features will be limited");
+                return;
+            }
+
+            elizaLogger.debug("[NewsService] AdapterProvider initialized successfully");
+
+        } catch (error) {
+            elizaLogger.error("[NewsService] Error initializing services:", error);
+            throw new Error(`Service initialization failed: ${error.message}`);
+        }
     }
 
     async fetchRecentNews(): Promise<NewsEvent[]> {
@@ -59,7 +97,7 @@ export class NewsService {
                 )
             );
 
-            elizaLogger.debug("[NewsService] Fetched trending topics:", trendingTopics);
+            elizaLogger.debug("[NewsService] Fetched trending topics:", trendingTopics.map(t => t.name).join(", "));
 
             return trendingTopics;
         } catch (error) {

@@ -51,33 +51,27 @@ export class ContentManagerService extends Service {
 
         // Initialize memory manager
         const contentMemory = new ContentAgentMemoryManager(runtime);
-        await contentMemory.initialize();
 
         // Initialize approval service
-        const approvalService = new ContentApprovalService(runtime, []);
-        await approvalService.initialize(approvalConfig);
+        const approvalService = new ContentApprovalService(runtime, [], approvalConfig);
 
         // Initialize the content delivery service
-        const contentDeliveryService = new ContentDeliveryService();
-        await contentDeliveryService.initialize(runtime, contentMemory, approvalService, adapterProvider);
+        const contentDeliveryService = new ContentDeliveryService(runtime);
 
         //Initialize content creation service
-        const contentCreationService = new ContentCreationService(runtime, contentMemory);
-        await contentCreationService.initialize(adapterProvider);
+        const contentCreationService = new ContentCreationService(runtime);
 
         // Initialize decision engine
-        const decisionEngine = new DecisionEngine(runtime, contentMemory);
+        const decisionEngine = new DecisionEngine(runtime);
 
         // Initialize evaluation service
         const evaluationService = new EvaluationService(runtime, contentMemory);
 
         // Initialize planning service
-        const planningService = new PlanningService(runtime, contentMemory);
-        await planningService.initialize(adapterProvider, planningConfig);
+        const planningService = new PlanningService(runtime, planningConfig);
 
         // Initialize news service
-        const newsService = new NewsService(runtime, contentMemory);
-        await newsService.initialize(adapterProvider);
+        const newsService = new NewsService(runtime);
 
         // Register services in service map
         ContentManagerService.serviceMap.set("content-delivery", contentDeliveryService);
@@ -92,6 +86,9 @@ export class ContentManagerService extends Service {
         ContentManagerService.serviceMap.set("twitter-adapter", twitterAdapter);
         ContentManagerService.serviceMap.set("content-manager", this);
         ContentManagerService.serviceMap.set("adapter-provider", adapterProvider);
+
+        await this.initializeServices(runtime);
+        elizaLogger.debug("[ContentManagerService] ContentManagerService initialized");
     }
 
     async getMicroService<T>(serviceName: string): Promise<T | null> {
@@ -101,4 +98,78 @@ export class ContentManagerService extends Service {
         return null;
     }
 
+    async initializeServices(runtime): Promise<void> {
+        elizaLogger.debug("[ContentManagerService] Initializing services");
+
+        try {
+            const contentMemory = ContentManagerService.serviceMap.get("content-memory") as ContentAgentMemoryManager;
+            const adapterProvider = ContentManagerService.serviceMap.get("adapter-provider") as AdapterProvider;
+            const contentDeliveryService = ContentManagerService.serviceMap.get("content-delivery") as ContentDeliveryService;
+            const contentCreationService = ContentManagerService.serviceMap.get("content-creation") as ContentCreationService;
+            const contentApprovalService = ContentManagerService.serviceMap.get("content-approval") as ContentApprovalService;
+            const planningService = ContentManagerService.serviceMap.get("planning-service") as PlanningService;
+            const newsService = ContentManagerService.serviceMap.get("news-service") as NewsService;
+            const evaluationService = ContentManagerService.serviceMap.get("evaluation-service") as EvaluationService;
+            const decisionEngine = ContentManagerService.serviceMap.get("decision-engine") as DecisionEngine;
+
+            if (contentMemory) {
+                await contentMemory.initialize();
+            } else {
+                elizaLogger.warn("[ContentManagerService] ContentAgentMemoryManager not available, content features may be limited");
+            }
+
+            if (adapterProvider) {
+                await adapterProvider.initialize();
+            } else {
+                elizaLogger.warn("[ContentManagerService] AdapterProvider not available, content features may be limited");
+            }
+
+            if (contentDeliveryService) {
+                await contentDeliveryService.initialize();
+            } else {
+                elizaLogger.warn("[ContentManagerService] ContentDeliveryService not available, content features may be limited");
+            }
+
+            if (contentCreationService) {
+                await contentCreationService.initialize();
+            } else {
+                elizaLogger.warn("[ContentManagerService] ContentCreationService not available, content features may be limited");
+            }
+
+            if (contentApprovalService) {
+                await contentApprovalService.initialize();
+            } else {
+                elizaLogger.warn("[ContentManagerService] ContentApprovalService not available, content features may be limited");
+            }
+
+            if (planningService) {
+                await planningService.initialize();
+            } else {
+                elizaLogger.warn("[ContentManagerService] PlanningService not available, content features may be limited");
+            }
+
+            if (newsService) {
+                await newsService.initialize();
+            } else {
+                elizaLogger.warn("[ContentManagerService] NewsService not available, content features may be limited");
+            }
+
+            if (evaluationService) {
+                await evaluationService.initialize();
+            } else {
+                elizaLogger.warn("[ContentManagerService] EvaluationService not available, content features may be limited");
+            }
+
+            if (decisionEngine) {
+                await decisionEngine.initialize();
+            } else {
+                elizaLogger.warn("[ContentManagerService] DecisionEngine not available, content features may be limited");
+            }
+
+            elizaLogger.debug("[ContentManagerService] Services initialized");
+        } catch (error) {
+            elizaLogger.error("[ContentManagerService] Error initializing services:", error.message);
+            throw new Error(`Service initialization failed: ${error.message}`);
+        }
+    }
 }

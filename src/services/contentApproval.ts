@@ -31,8 +31,9 @@ export class ContentApprovalService {
     private isInitialized: boolean = false;
     private periodicCheckInterval: NodeJS.Timeout | null = null;
 
-    constructor(runtime: IAgentRuntime, providers: ApprovalProvider[]) {
+    constructor(runtime: IAgentRuntime, providers: ApprovalProvider[], approvalConfig: ApprovalConfig) {
         this.runtime = runtime;
+        this.config = approvalConfig;
         this.providers = new Map();
 
         providers.forEach(provider => {
@@ -40,16 +41,20 @@ export class ContentApprovalService {
         });
     }
 
-    async initialize(approvalConfig: ApprovalConfig): Promise<void> {
-        elizaLogger.debug("[ContentApprovalService] Initializing ContentApprovalService");
+    async initialize(): Promise<void> {
+        if (this.isInitialized) {
+            elizaLogger.debug("[ContentApprovalService] ContentApprovalService is already initialized");
+            return;
+        }
 
-        this.config = approvalConfig;
+        // Initialize the service
+        elizaLogger.debug("[ContentApprovalService] Initializing ContentApprovalService");
 
         // Setup default platform provider mapping
         this.setupPlatformProviderMapping();
 
         // Check if the service is enabled
-        if (!approvalConfig.APPROVAL_ENABLED) {
+        if (!this.config.APPROVAL_ENABLED) {
             elizaLogger.warn("[ContentApprovalService] Content approval service is disabled.");
             this.isInitialized = true;
             return;

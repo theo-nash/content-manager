@@ -37,52 +37,42 @@ interface lockKey {
 }
 
 export class PlanningService {
-    private adapterProvider: AdapterProvider;
+    private adapterProvider: AdapterProvider | null = null;
     private platformFormats: Map<Platform, Map<string, string[]>> = new Map();
     private platformFormatting = {};
     private plansDirectory: string;
-    private config: ContentPlanningConfig;
     private planCreationTimers: Map<UUID, NodeJS.Timeout> = new Map();
     private isInitialized: boolean = false;
     private contentManager: ContentManagerService | null = null;
     private approvalService: ContentApprovalService | null = null;
     private deliveryService: ContentDeliveryService | null = null;
+    private memoryManager: ContentAgentMemoryManager | null = null;
     private lockRegistry = new Set<string>();
 
 
-    constructor(private runtime: IAgentRuntime, private memoryManager: ContentAgentMemoryManager) {
+    constructor(private runtime: IAgentRuntime, private config: ContentPlanningConfig) {
         this.plansDirectory = path.join(__dirname, 'plans');
     }
 
-    async initialize(adapterProvider: AdapterProvider, config: ContentPlanningConfig): Promise<void> {
+    async initialize(): Promise<void> {
         try {
+            if (this.isInitialized) {
+                elizaLogger.debug("[PlanningService] Already initialized");
+                return;
+            }
+
             elizaLogger.debug("[PlanningService] Initializing PlanningService");
-            this.adapterProvider = adapterProvider;
-            this.config = config;
 
             elizaLogger.log("[PlanningService] Micro plan frequency set to:", this.config.MICRO_PLAN_TIMEFRAME);
+
+            // Initialize requ;ired services
+            await this.initializeServices()
 
             // Initialize directory
             await this.ensurePlanDirectoryExists();
 
-            const adapters = await this.adapterProvider.getAllAdapters();
-            this.platformFormats = new Map();
-
-            for (const adapter of adapters) {
-                const formatMap = new Map<string, string[]>();
-                formatMap.set("possibleFormats", adapter.contentFormats);
-                this.platformFormats.set(adapter.platform, formatMap);
-            }
-
-            this.platformFormats.forEach((formatMap, platform) => {
-                this.platformFormatting[platform] = {};
-                formatMap.forEach((formats, key) => {
-                    this.platformFormatting[platform][key] = formats;
-                });
-            });
-
-            // Initialize required services
-            await this.initializeServices();
+            // Configure platform formatting
+            await this.configureFormatting();
 
             // Load existing plans
             await this.loadExistingPlans();
@@ -128,15 +118,55 @@ export class PlanningService {
                 elizaLogger.warn("[PlanningService] ContentApprovalService not available, approval flow will be limited");
             }
 
+            // Get adapter provider
+            this.adapterProvider = await this.contentManager.getMicroService<AdapterProvider>("adapter-provider");
+
+            if (!this.adapterProvider) {
+                elizaLogger.warn("[PlanningService] AdapterProvider not available, content features will be limited");
+                return;
+            }
+
             // Get delivery service
             this.deliveryService = await this.contentManager.getMicroService<ContentDeliveryService>("content-delivery");
 
             if (!this.deliveryService) {
                 elizaLogger.warn("[PlanningService] ContentDeliveryService not available, content scheduling will be limited");
             }
+
+            // Get memory manager
+            this.memoryManager = await this.contentManager.getMicroService<ContentAgentMemoryManager>("content-memory");
+
+            if (!this.memoryManager) {
+                elizaLogger.warn("[PlanningService] MemoryManager not available, content features may be limited");
+            }
+
         } catch (error) {
             elizaLogger.error("[PlanningService] Error initializing services:", error);
             throw new Error(`Service initialization failed: ${error.message}`);
+        }
+    }
+
+    private async configureFormatting(): Promise<void> {
+        try {
+            // Configure adapters
+            const adapters = await this.adapterProvider.getAllAdapters();
+            this.platformFormats = new Map();
+
+            for (const adapter of adapters) {
+                const formatMap = new Map<string, string[]>();
+                formatMap.set("possibleFormats", adapter.contentFormats);
+                this.platformFormats.set(adapter.platform, formatMap);
+            }
+
+            this.platformFormats.forEach((formatMap, platform) => {
+                this.platformFormatting[platform] = {};
+                formatMap.forEach((formats, key) => {
+                    this.platformFormatting[platform][key] = formats;
+                });
+            });
+        } catch (error) {
+            elizaLogger.error("[PlanningService] Error configuring platform formatting:", error);
+            throw new Error("Failed to configure platform formatting");
         }
     }
 

@@ -1,5 +1,5 @@
 // src/services/evaluation-service.ts
-import { UUID, IAgentRuntime, ModelClass, generateText } from "@elizaos/core";
+import { UUID, IAgentRuntime, ModelClass, generateText, elizaLogger } from "@elizaos/core";
 import {
     ProgressEvaluation,
     GoalProgress,
@@ -11,7 +11,19 @@ import {
 import { ContentAgentMemoryManager } from "../managers/contentMemory";
 
 export class EvaluationService {
+    private isInitialized: boolean = false;
+
     constructor(private runtime: IAgentRuntime, private memoryManager: ContentAgentMemoryManager) { }
+
+    async initialize(): Promise<void> {
+        if (this.isInitialized) {
+            elizaLogger.debug("[EvaluationService] EvaluationService is already initialized");
+            return;
+        }
+
+        // Initialize the service
+        this.isInitialized = true;
+    }
 
     async evaluateProgress(masterPlanId: UUID): Promise<ProgressEvaluation> {
         // Fetch master plan

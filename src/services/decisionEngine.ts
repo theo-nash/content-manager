@@ -14,9 +14,52 @@ import {
 } from "../types";
 import { ContentAgentMemoryManager } from "../managers/contentMemory";
 import { z } from "zod";
+import { ContentManagerService } from "./contentManager";
 
 export class DecisionEngine {
-    constructor(private runtime: IAgentRuntime, private memoryManager: ContentAgentMemoryManager) { }
+    private isInitialized: boolean = false;
+    private memoryManager: ContentAgentMemoryManager | null = null;
+    private contentManager: ContentManagerService | null = null;
+
+    constructor(private runtime: IAgentRuntime) { }
+
+    async initialize(): Promise<void> {
+        if (this.isInitialized) {
+            elizaLogger.debug("[DecisionEngine] DecisionEngine is already initialized");
+            return;
+        }
+
+        // Initialize the service
+        elizaLogger.debug("[DecisionEngine] Initializing DecisionEngine");
+
+        // Initialize required services
+        await this.initializeServices();
+
+        this.isInitialized = true;
+    }
+
+    private async initializeServices(): Promise<void> {
+        try {
+            this.contentManager = await this.runtime.getService<ContentManagerService>(ContentManagerService.serviceType);
+            if (!this.contentManager) {
+                throw new Error("[DecisionEngine] ContentManagerService not available");
+            }
+
+            // Get delivery service
+            this.memoryManager = await this.contentManager.getMicroService<ContentAgentMemoryManager>("content-memory");
+
+            if (!this.memoryManager) {
+                elizaLogger.warn("[DecisionEngine] MemoryManagerService not available, content features will be limited");
+                return;
+            }
+
+            elizaLogger.debug("[DecisionEngine] AdapterProvider initialized successfully");
+
+        } catch (error) {
+            elizaLogger.error("[DecisionEngine] Error initializing services:", error);
+            throw new Error(`Service initialization failed: ${error.message}`);
+        }
+    }
 
     /**
      * Makes a content creation decision based on master plans, current context, and external factors

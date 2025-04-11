@@ -3,6 +3,8 @@ import { generateMicroPlanAction } from "./actions/generate-micro-plan";
 import { contentStrategyProvider } from "./providers/content-strategy-provider";
 import { Plugin } from "@elizaos/core";
 import { ContentManagerService } from "./services/contentManager";
+import { ScheduleContentAction } from "./actions/schedule-content";
+import { GenerateContentAction } from "./actions/generate-content";
 
 const contentManagerPlugin: Plugin = {
     name: "content-manager",
@@ -10,6 +12,8 @@ const contentManagerPlugin: Plugin = {
     actions: [
         createMasterPlanAction,
         generateMicroPlanAction,
+        ScheduleContentAction,
+        GenerateContentAction
     ],
     services: [new ContentManagerService()],
     providers: [

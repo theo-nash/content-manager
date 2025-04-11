@@ -4,6 +4,7 @@ import { AdapterRegistration, ApprovalStatus, ContentPiece, ContentStatus, Maste
 import { ContentAgentMemoryManager } from "../managers/contentMemory";
 import { TimestampStyles } from "discord.js";
 import { AdapterProvider } from "./adapterService";
+import { ContentManagerService } from "./contentManager";
 
 /**
  * Service responsible for generating content based on content pieces
@@ -11,14 +12,53 @@ import { AdapterProvider } from "./adapterService";
  * following brand guidelines and strategic objectives.
  */
 export class ContentCreationService {
-    private adapterProvider: AdapterProvider;
+    private adapterProvider: AdapterProvider | null = null;
+    private isInitialized: boolean = false;
+    private contentManager: ContentManagerService | null = null;
+    private memoryManager: ContentAgentMemoryManager | null = null;
 
-    constructor(private runtime: IAgentRuntime, private memoryManager: ContentAgentMemoryManager) { }
+    constructor(private runtime: IAgentRuntime) { }
 
-    async initialize(adapterProvider?: AdapterProvider): Promise<void> {
+    async initialize(): Promise<void> {
+        if (this.isInitialized) {
+            elizaLogger.debug("[ContentCreationService] ContentCreationService is already initialized");
+            return;
+        }
+
         elizaLogger.debug("[ContentCreationService] Initializing ContentCreationService");
 
-        this.adapterProvider = adapterProvider;
+        // Initialize required services
+        await this.initializeServices();
+
+        this.isInitialized = true;
+    }
+
+    async initializeServices(): Promise<void> {
+        try {
+            // Get content manager service
+            this.contentManager = await this.runtime.getService<ContentManagerService>(ContentManagerService.serviceType);
+
+            if (!this.contentManager) {
+                throw new Error("[ContentCreationService] ContentManagerService not available");
+            }
+
+            this.adapterProvider = await this.contentManager.getMicroService<AdapterProvider>("adapter-provider");
+
+            if (!this.adapterProvider) {
+                elizaLogger.warn("[ContentCreationService] AdapterProvider not available, content features will be limited");
+                return;
+            }
+
+            this.memoryManager = await this.contentManager.getMicroService<ContentAgentMemoryManager>("content-memory");
+
+            if (!this.memoryManager) {
+                elizaLogger.warn("[ContentCreationService] MemoryManager not available, content features may be limited");
+            }
+
+        } catch (error) {
+            elizaLogger.error("[ContentCreationService] Error initializing services:", error);
+            throw new Error(`Service initialization failed: ${error.message}`);
+        }
     }
 
     async generateContent(contentPiece: ContentPiece): Promise<ContentPiece> {

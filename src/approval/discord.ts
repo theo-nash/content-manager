@@ -7,10 +7,15 @@ export class DiscordApprovalProvider implements ApprovalProvider {
     private discordClient: Client;
     private approvalChannelId: string;
     private runtime: IAgentRuntime;
-    private initialized = false;
+    private isInitialized = false;
     providerName = "discord";
 
     async initialize(runtime: IAgentRuntime): Promise<void> {
+        if (this.isInitialized) {
+            elizaLogger.debug("Discord approval provider already initialized");
+            return;
+        }
+
         this.runtime = runtime;
 
         // Get Discord configuration
@@ -47,7 +52,7 @@ export class DiscordApprovalProvider implements ApprovalProvider {
                 `Use this link to properly invite the Twitter Post Approval Discord bot: ${invite}`
             );
 
-            this.initialized = true;
+            this.isInitialized = true;
         });
 
         // Login to Discord
@@ -63,7 +68,7 @@ export class DiscordApprovalProvider implements ApprovalProvider {
     }
 
     async submitForApproval<T extends ApprovalContent>(request: ApprovalRequest<T>): Promise<ApprovalRequest<T>> {
-        if (!this.initialized || !this.discordClient) {
+        if (!this.isInitialized || !this.discordClient) {
             elizaLogger.error("Discord approval provider not initialized");
             return;
         }
@@ -152,7 +157,7 @@ export class DiscordApprovalProvider implements ApprovalProvider {
     }
 
     async checkApprovalStatus<T extends ApprovalContent>(request: ApprovalRequest<T>): Promise<ApprovalRequest<T>> {
-        if (!this.initialized || !this.discordClient) {
+        if (!this.isInitialized || !this.discordClient) {
             throw new Error("Discord approval provider not initialized");
         }
 
@@ -216,7 +221,7 @@ export class DiscordApprovalProvider implements ApprovalProvider {
 
     async cleanupRequest(requestId: string): Promise<void> {
         try {
-            if (this.initialized && this.discordClient) {
+            if (this.isInitialized && this.discordClient) {
                 const channel = await this.discordClient.channels.fetch(this.approvalChannelId);
                 if (channel && channel.isTextBased()) {
                     try {

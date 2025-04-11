@@ -1,20 +1,23 @@
-import { UUID, IAgentRuntime, elizaLogger, ServiceType, stringToUuid } from "@elizaos/core";
+import { elizaLogger } from "@elizaos/core";
 import {
-    ContentPiece,
     Platform,
     PlatformAdapter,
     PlatformAdapterConfig,
-    PublishResult,
-    ContentStatus,
     AdapterRegistration,
-    ApprovalStatus,
-    ApprovalRequest
 } from "../types";
-import { ContentApprovalService } from "./contentApproval";
-import { ContentAgentMemoryManager } from "../managers/contentMemory";
 
 export class AdapterProvider {
     private adapterRegistry: Map<Platform, AdapterRegistration> = new Map();
+    private isInitialized: boolean = false;
+
+    async initialize(): Promise<void> {
+        if (this.isInitialized) {
+            elizaLogger.debug("[AdapterProvider] AdapterProvider is already initialized");
+            return;
+        }
+        elizaLogger.debug("[AdapterProvider] Initializing AdapterProvider");
+        this.isInitialized = true;
+    }
 
     registerAdapter(adapter: PlatformAdapter, config?: PlatformAdapterConfig): void {
         elizaLogger.debug(`[AdapterProvider] Registering adapter for platform: ${adapter.platform}`);

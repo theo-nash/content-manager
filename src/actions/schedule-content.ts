@@ -99,7 +99,7 @@ export const ScheduleContentAction: Action = {
             const contentPiece = JSON.parse(contentMemoryItem.content.text) as ContentPiece;
 
             // Schedule the content
-            const result = await contentDeliveryService.postContent(contentPiece, {
+            const result = await contentDeliveryService.submitContent(contentPiece, {
                 scheduledTime
             });
 

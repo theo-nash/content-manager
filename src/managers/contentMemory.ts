@@ -113,7 +113,7 @@ export class ContentAgentMemoryManager implements IMemoryManager {
             await this.getMemoryById(memory.id);
 
         if (existingMessage) {
-            elizaLogger.debug("[ContentMemoryManager] already exists, skipping");
+            elizaLogger.debug(`[ContentMemoryManager] Memory ${memory.id} already exists, skipping`);
             return;
         }
 
