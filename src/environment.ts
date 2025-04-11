@@ -17,7 +17,8 @@ export const contentPlanningConfigSchema = z.object({
         Timeframe.WEEKLY,
         Timeframe.MONTHLY,
         Timeframe.QUARTERLY
-    ]).default(DEFAULT_MICRO_PLAN_TIMEFRAME)
+    ]).default(DEFAULT_MICRO_PLAN_TIMEFRAME),
+    AUTO_APPROVE_PLANS: z.boolean().default(false),
 });
 
 export type ContentPlanningConfig = z.infer<typeof contentPlanningConfigSchema>;
@@ -35,7 +36,13 @@ export async function validateContentPlanningConfig(
                 runtime.getSetting("DEFAULT_MICRO_PLAN_TIMEFRAME") ||
                 process.env.DEFAULT_MICRO_PLAN_TIMEFRAME ||
                 DEFAULT_MICRO_PLAN_TIMEFRAME
-            ) as Timeframe
+            ) as Timeframe,
+
+            AUTO_APPROVE_PLANS:
+                parseBooleanFromText(
+                    runtime.getSetting("AUTO_APPROVE_PLANS") ||
+                    process.env.AUTO_APPROVE_PLANS
+                ) ?? false,
         };
 
         return contentPlanningConfigSchema.parse(config);
@@ -43,7 +50,8 @@ export async function validateContentPlanningConfig(
         elizaLogger.error("Content planning configuration validation failed:", error);
         // Return default config on error
         return {
-            MICRO_PLAN_TIMEFRAME: DEFAULT_MICRO_PLAN_TIMEFRAME
+            MICRO_PLAN_TIMEFRAME: DEFAULT_MICRO_PLAN_TIMEFRAME,
+            AUTO_APPROVE_PLANS: false
         };
     }
 }
@@ -62,6 +70,7 @@ export const approvalConfigSchema = z.object({
     APPROVAL_CHECK_INTERVAL: z.number().int().default(1),
     APPROVAL_CHANNEL: z.string().default(DEFAULT_APPROVAL_CHANNEL),
     NOTIFICATION_CHANNEL: z.string().default(DEFAULT_NOTIFICATION_CHANNEL),
+    PLATFORM_PROVIDER_MAPPING: z.string().optional()
 });
 
 export type ApprovalConfig = z.infer<typeof approvalConfigSchema>;
@@ -109,6 +118,11 @@ export async function validateApprovalConfig(
                 runtime.getSetting("NOTIFICATION_CHANNEL") ||
                 process.env.NOTIFICATION_CHANNEL ||
                 DEFAULT_NOTIFICATION_CHANNEL,
+
+            PLATFORM_PROVIDER_MAPPING:
+                runtime.getSetting("PLATFORM_PROVIDER_MAPPING") ||
+                process.env.PLATFORM_PROVIDER_MAPPING ||
+                undefined,
         };
 
         return approvalConfigSchema.parse(config);
@@ -116,6 +130,10 @@ export async function validateApprovalConfig(
         elizaLogger.error("Approval configuration validation failed:", error);
         // Return default config on error
         return {
+            APPROVAL_ENABLED: true,
+            APPROVAL_AUTOAPPROVE: false,
+            AUTO_REJECT_DAYS: 7,
+            APPROVAL_CHECK_INTERVAL: 1,
             APPROVAL_CHANNEL: DEFAULT_APPROVAL_CHANNEL,
             NOTIFICATION_CHANNEL: DEFAULT_NOTIFICATION_CHANNEL,
         };
